@@ -244,7 +244,10 @@ const canvas = document.getElementById("stage");
 const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = 1.0;
+// Lighting, tuned so the #525252 plastic renders like the product render (body ≈ #4a4a4a, top faces no lighter):
+// soft and even, not bright from above.
+const LIGHT = {exposure: 0.95, env: 0.35, key: 1.9, fill: 2.5, sky: 0.1};   // key: reading side, fill: button side
+renderer.toneMappingExposure = LIGHT.exposure;
 const scene = new THREE.Scene();
 scene.background = new THREE.Color("#f6f6f4");
 scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
@@ -252,9 +255,9 @@ const camera = new THREE.PerspectiveCamera(30, 1, 1, 2000);
 let cam = camera, actual = false;   // actual: real-size view on (see setActual)
 const controls = new OrbitControls(camera, canvas);
 controls.enableDamping = true; controls.minDistance = 40; controls.maxDistance = 900;
-const key = new THREE.DirectionalLight("#ffffff", 1.4); key.position.set(60, 160, 120); scene.add(key);
-const fill = new THREE.DirectionalLight("#ffffff", 2.2); fill.position.set(-80, 120, -160); scene.add(fill);
-scene.add(new THREE.HemisphereLight("#ffffff", "#c9c9c4", 0.6));
+const key = new THREE.DirectionalLight("#ffffff", LIGHT.key); key.position.set(60, 35, 160); scene.add(key);       // front, low
+const fill = new THREE.DirectionalLight("#ffffff", LIGHT.fill); fill.position.set(10, 35, -170); scene.add(fill);   // back, low, square on the button side
+scene.add(new THREE.HemisphereLight("#ffffff", "#c9c9c4", LIGHT.sky));
 
 // Contact shadow under the device (added to the device group below, so each device gets one)
 let shadowMesh;
@@ -320,7 +323,7 @@ const slab = ({w, d, r, h, y0, bevel = 0, segs = 4, holes = []}) =>
 const solid = ({inset = 0, h, y0, bevel = 0, segs = 4, holes = [], crease = Math.PI/5}) =>
   toCreasedNormals(extrude(addHoles(new THREE.Shape(outline(inset + bevel)), holes), h, y0, bevel, segs), crease);
 
-const plastic = new THREE.MeshStandardMaterial({color:"#4b4c50", roughness:0.62, metalness:0});
+const plastic = new THREE.MeshStandardMaterial({color:"#525252", roughness:0.62, metalness:0, envMapIntensity:LIGHT.env});   // body, side and play buttons
 const plasticBack = plastic.clone(); plasticBack.side = THREE.BackSide;   // faces seen from below
 const core = new THREE.MeshStandardMaterial({color:"#1c1c1f", roughness:0.8});
 // The left device is built here; the right one is a clone of it (see "Two devices" below)
