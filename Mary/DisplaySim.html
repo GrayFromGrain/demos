@@ -1693,11 +1693,14 @@ if(new URLSearchParams(location.search).has("embed")){
   const post = () => parent.postMessage({type:"dsim-fb", name: current ? current.name : null, fb}, "*");
   const renderMain = render;
   render = dirty => { renderMain(dirty); post(); };
-  const ready = () => parent.postMessage({type:"dsim-ready", screens: hmi.map(s => s.name)}, "*");
+  const ready = () => parent.postMessage({type:"dsim-ready", screens: hmi.map(s => s.name), caps: $("hcaps").checked}, "*");
   addEventListener("message", e => {
     const d = e.data || {};
     if(d.type === "dsim-hello") ready();                 // the parent may start listening after this page loads
     if(d.type === "dsim-show"){ const st = hmi.find(s => s.name === d.name); if(st) showState(st); }
+    if(d.type === "dsim-set" && "caps" in d && $("hcaps").checked !== !!d.caps){   // same as flipping this page's All caps switch
+      $("hcaps").checked = !!d.caps; $("hcaps").dispatchEvent(new Event("change"));
+    }
   });
   ready();
 }
