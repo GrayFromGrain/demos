@@ -21,7 +21,7 @@
   button{cursor:pointer}
   #stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
   .panel{position:fixed;top:16px;width:min(300px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--line);border-radius:14px;
-    padding:14px 16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:13px}
+    padding:14px 16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:13px;max-height:calc(100vh - 32px);overflow:auto}
   .panel.hmi{left:16px}
   .panel.view{right:16px}
   @media (max-width:680px){ .panel.view{right:auto;left:16px;top:auto;bottom:16px} }   /* narrow: HMI on top, 3D view at the bottom */
@@ -45,10 +45,20 @@
   input[type=number]{height:32px;width:72px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:0 8px;font:inherit;font-size:13px}
   input[type=range]{accent-color:var(--ink);flex:1;min-width:80px}
   .seg{display:flex;gap:4px}
+  .sect{border-top:1px solid var(--line);margin:2px -16px 0;padding:12px 16px 0;display:flex;flex-direction:column;gap:8px}
+  h3{font-size:13px;font-weight:700;margin:0}
+  .vlist{display:grid;grid-template-columns:1fr auto;gap:6px 10px;align-items:center;font-size:12.5px}
+  .vers{display:inline-flex;gap:2px;padding:2px;border-radius:99px;border:1px solid var(--line);background:var(--surface)}
+  .vers button{height:22px;min-width:26px;padding:0 6px;border:none;border-radius:99px;background:none;font-size:12px;font-weight:600;color:var(--muted)}
+  .vers button:hover{color:var(--ink)}
+  .vers button[aria-checked="true"]{background:var(--ink);color:#fff}
+  .vers button:focus-visible{outline:2px solid color-mix(in srgb,var(--ink) 40%,transparent);outline-offset:1px}
   .seg .btn{flex:1}
   .note{font-size:12px;color:var(--muted);margin:0;line-height:1.45}
   .devled{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:center}
   .devled b{font-size:12px;font-weight:700}
+  .under{position:fixed;left:0;top:0;display:flex;align-items:center;gap:6px;width:min(390px,calc(100vw - 32px));z-index:1}
+  .under select{flex:1}
   .garment{position:fixed;left:0;top:0;transform:translate(-50%,0);background:var(--surface);border:1px solid var(--line);border-radius:12px;
     padding:8px 10px;box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;white-space:nowrap;z-index:1}
   .garment b{font-size:13px}
@@ -85,20 +95,29 @@
     </div>
     <p class="note">Click the 3D buttons: ▶ is START. To start with just one device, hold ▶ for about 1 s while it's waiting for the other device.</p>
   </div>
-  <div id="browseCtl" class="row" hidden>
-    <button class="btn" id="prev" aria-label="Previous screen">‹</button>
-    <select id="screen" aria-label="HMI screen"></select>
-    <button class="btn" id="next" aria-label="Next screen">›</button>
-  </div>
-  <div class="row"><label class="switch" title="Show the screen text in capitals (same setting as DisplaySim's All caps)"><input type="checkbox" id="caps"><span class="track"></span>All caps</label>
-    <label class="switch" title="Play each screen's sound as it appears (same sounds and setting as HMI-Flow)"><input type="checkbox" id="sound" checked><span class="track"></span>Sound</label></div>
+  <div class="row"><label class="switch" title="Show the screen text in capitals (same setting as DisplaySim's All caps)"><input type="checkbox" id="caps"><span class="track"></span>All caps</label></div>
   <div class="devled">
     <b>Left</b><div class="led"><i id="ledSwatchL"></i><span id="ledTextL">LED off</span></div>
     <b class="rightOnly">Right</b><div class="led rightOnly"><i id="ledSwatchR"></i><span id="ledTextR">LED off</span></div>
   </div>
   <p class="err" id="err" hidden></p>
+  <section class="sect" aria-labelledby="soundTitle">
+    <div class="row" style="justify-content:space-between">
+      <h3 id="soundTitle">Sound</h3>
+      <label class="switch" title="Play each screen's sound as it appears (same sounds and setting as HMI-Flow)" style="padding:0"><input type="checkbox" id="sound" checked aria-label="Sound on"><span class="track"></span></label>
+    </div>
+    <div class="vlist" id="soundVers"></div>
+    <p class="note">Click a version to hear it. The choice is shared with HMI-Flow.</p>
+  </section>
 </div>
 <div class="garment" id="garmentL"><b>Left</b><span class="st"></span><button class="btn" aria-pressed="false">Put in garment</button></div>
+<!-- Browse screens: the screen picker, under the device -->
+<div class="under" id="browseCtl" hidden>
+  <button class="btn" id="prev" aria-label="Previous screen">‹</button>
+  <select id="screen" aria-label="HMI screen"></select>
+  <button class="btn" id="next" aria-label="Next screen">›</button>
+  <button class="btn" id="restart" title="Go back to the Off screen">↺ Restart</button>
+</div>
 <div class="garment" id="garmentR"><b>Right</b><span class="st"></span><button class="btn" aria-pressed="false">Put in garment</button></div>
 <div class="panel view" aria-labelledby="viewTitle">
   <h2 id="viewTitle">3D view</h2>
@@ -476,28 +495,28 @@ const other = d => devs.find(o => o !== d);
 const NOTE = {C6:1046.5, C7:2093.0, D7:2349.3, E7:2637.0, G7:3136.0};
 // note: [freq, start_ms, dur_ms, envelope, gain(0-1)]
 const SOUNDS = {
-  on:   { level:0.5, versions:[
-    { notes:[[NOTE.C7,0,140,"pluck",1],[NOTE.G7,180,620,"bell",1]] },
-    { notes:[[NOTE.C6,0,120,"pluck",1],[NOTE.C7,150,550,"bell",1]] } ] },
-  dock: { level:0.5, versions:[
-    { notes:[[NOTE.E7,0,160,"pluck",0.45],[NOTE.C7,260,260,"bell",1]] },
-    { notes:[[NOTE.E7,0,22,"pluck",0.45],[NOTE.C7,60,140,"pluck",1]] } ] },
-  start:{ level:0.5, versions:[
-    { notes:[[NOTE.D7,0,260,"pluck",1],[NOTE.G7,360,520,"bell",1]] },
-    { notes:[[NOTE.D7,0,100,"pluck",1],[NOTE.G7,140,600,"bell",1]] } ] },
-  done: { level:0.71, versions:[
-    { notes:[[NOTE.D7,0,140,"pluck",1],[NOTE.C7,160,140,"pluck",1],[NOTE.E7,300,880,"bell",1],[NOTE.G7,300,700,"bell",0.18]] } ] },
-  low:  { level:0.71, versions:[
-    { notes:[[NOTE.G7,0,260,"pluck",1],[NOTE.D7,360,520,"bell",1]] },
-    { notes:[[NOTE.G7,0,200,"pluck",1],[NOTE.D7,280,300,"bell",1],[NOTE.G7,800,200,"pluck",1],[NOTE.D7,1080,300,"bell",1]] } ] },
-  plug: { level:0.5, versions:[
-    { notes:[[NOTE.D7,0,125,"pluck",1],[NOTE.G7,200,200,"bell",1]] } ] },
+  on:   { name:"Turn ON", level:0.5, versions:[
+    { desc:"A wide leap with a crisp attack, landing on resonance.", notes:[[NOTE.C7,0,140,"pluck",1],[NOTE.G7,180,620,"bell",1]] },
+    { desc:"The original octave leap (C6 to C7).", notes:[[NOTE.C6,0,120,"pluck",1],[NOTE.C7,150,550,"bell",1]] } ] },
+  dock: { name:"Dock into Garment", level:0.5, versions:[
+    { desc:"Charger's timing and attack on Dock's notes, E7 and C7.", notes:[[NOTE.E7,0,160,"pluck",0.45],[NOTE.C7,260,260,"bell",1]] },
+    { desc:"The original tick and note (200 ms).", notes:[[NOTE.E7,0,22,"pluck",0.45],[NOTE.C7,60,140,"pluck",1]] } ] },
+  start:{ name:"Start Treatment", level:0.5, versions:[
+    { desc:"A lift into a ringing note, with longer notes and a crisp attack.", notes:[[NOTE.D7,0,260,"pluck",1],[NOTE.G7,360,520,"bell",1]] },
+    { desc:"The original quicker lift (740 ms).", notes:[[NOTE.D7,0,100,"pluck",1],[NOTE.G7,140,600,"bell",1]] } ] },
+  done: { name:"Treatment Finished", level:0.71, versions:[
+    { desc:"Answers Start and rings out on the buzzer's resonance.", notes:[[NOTE.D7,0,140,"pluck",1],[NOTE.C7,160,140,"pluck",1],[NOTE.E7,300,880,"bell",1],[NOTE.G7,300,700,"bell",0.18]] } ] },
+  low:  { name:"Battery is Low", level:0.71, versions:[
+    { desc:"Start Treatment mirrored: the same pluck and ring, stepping down.", notes:[[NOTE.G7,0,260,"pluck",1],[NOTE.D7,360,520,"bell",1]] },
+    { desc:"The same mirrored step, played twice so it reads as an alert.", notes:[[NOTE.G7,0,200,"pluck",1],[NOTE.D7,280,300,"bell",1],[NOTE.G7,800,200,"pluck",1],[NOTE.D7,1080,300,"bell",1]] } ] },
+  plug: { name:"Charger Connected", level:0.5, versions:[
+    { desc:"A short pluck stepping up into a brief ring.", notes:[[NOTE.D7,0,125,"pluck",1],[NOTE.G7,200,200,"bell",1]] } ] },
 };
 // Which sound each screen plays as it appears (HMI-Flow.html's `sound` per state)
 const SCREEN_SOUND = {"Turn On":"on", "Waiting for Device":"dock", "Docked into Garment":"dock", "Start Treatment":"start",
   "Custom Treatment":"start", "Treatment Finished":"done", "Battery Low":"low", "Charger Connected":"plug"};
-const pickVersion = id => { let p = {}; try{ p = JSON.parse(localStorage.getItem("hmi-flow-versions") || "{}") || {}; }catch(e){}
-  const v = p[id]; return Number.isInteger(v) && v < SOUNDS[id].versions.length ? v : 0; };
+const readPicks = () => { try{ return JSON.parse(localStorage.getItem("hmi-flow-versions") || "{}") || {}; }catch(e){ return {}; } };
+const pickVersion = id => { const v = readPicks()[id]; return Number.isInteger(v) && v < SOUNDS[id].versions.length ? v : 0; };
 const soundBox = document.getElementById("sound");
 try{ soundBox.checked = localStorage.getItem("hmi-flow-sound") !== "off"; }catch(e){}
 soundBox.onchange = () => { try{ localStorage.setItem("hmi-flow-sound", soundBox.checked ? "on" : "off"); }catch(e){} };
@@ -510,8 +529,8 @@ function audio(){
   return actx;
 }
 for(const ev of ["pointerdown", "keydown"]) addEventListener(ev, audio, {capture:true});
-function playSound(id){
-  const s = SOUNDS[id]; if(!s || !soundBox.checked) return;
+function playSound(id, preview = false){            // preview: an A/B click, heard even with Sound off
+  const s = SOUNDS[id]; if(!s || !(soundBox.checked || preview)) return;
   const now = performance.now();
   if(lastSound.id === id && now - lastSound.t < 80) return;   // the pair changes together: one sound, not two
   lastSound = {id, t:now};
@@ -538,6 +557,22 @@ function playSound(id){
     o.connect(a); a.connect(master); o.start(t); o.stop(t + dur + 0.02);
   }
 }
+
+// A/B versions for each sound that has more than one (HMI-Flow.html's version toggle, all sounds at once)
+function renderVersions(){
+  document.getElementById("soundVers").innerHTML = Object.entries(SOUNDS).filter(([, s]) => s.versions.length > 1).map(([id, s]) =>
+    `<span>${s.name}</span><div class="vers" role="radiogroup" aria-label="${s.name} version" data-id="${id}">` +
+    s.versions.map((v, k) => `<button role="radio" data-v="${k}" aria-checked="${k === pickVersion(id)}" title="${s.name} ${"ABCDEFGH"[k]}: ${v.desc}">${"ABCDEFGH"[k]}</button>`).join("") +
+    `</div>`).join("");
+}
+document.getElementById("soundVers").onclick = e => {
+  const b = e.target.closest("button"), g = b && b.closest(".vers"); if(!g) return;
+  const p = readPicks(); p[g.dataset.id] = +b.dataset.v;
+  try{ localStorage.setItem("hmi-flow-versions", JSON.stringify(p)); }catch(err){}
+  renderVersions(); lastSound.id = null; playSound(g.dataset.id, true);
+};
+addEventListener("storage", e => { if(e.key === "hmi-flow-versions") renderVersions(); });   // picked in HMI-Flow in another tab
+renderVersions();
 
 // ---- Screens, drawn by the embedded DisplaySims (one per device) ----
 // swap: [[regex, text], …] replaces part of the screen's text (live timer, Dock Left, Paused)
@@ -586,6 +621,7 @@ sel.onchange = () => browseShow(screens.indexOf(sel.value));
 document.getElementById("caps").onchange = e => devs.forEach(d => d.frame.contentWindow.postMessage({type:"dsim-set", caps:e.target.checked}, "*"));
 document.getElementById("prev").onclick = () => browseShow(idx - 1);
 document.getElementById("next").onclick = () => browseShow(idx + 1);
+document.getElementById("restart").onclick = () => browseShow(Math.max(0, screens.indexOf("Off")));
 addEventListener("keydown", e => { if(mode !== "browse" || e.target === sel) return; if(e.key === "ArrowRight") browseShow(idx + 1); if(e.key === "ArrowLeft") browseShow(idx - 1); });
 
 // ---- 2 device user flow (bilateral), from the "2 Device User Flow" chart ----
@@ -667,6 +703,7 @@ function tickFlow(now){
   for(const d of devs) if(d.state === "DONE" && now - d.t0 >= autoOff) setState(d, "OFF");
 }
 function setMode(m){
+  if(m === mode) return;
   mode = m;
   document.getElementById("modeFlow").setAttribute("aria-pressed", m === "flow");
   document.getElementById("modeBrowse").setAttribute("aria-pressed", m === "browse");
@@ -676,7 +713,8 @@ function setMode(m){
   // Browse shows one device, centered; the flow demo shows the pair
   rightGroup.visible = m === "flow"; device.position.x = m === "flow" ? -OFFX : 0;
   document.querySelectorAll(".rightOnly").forEach(el => el.hidden = m !== "flow");
-  setView(curView);
+  // Browse opens on the Top view; the flow demo goes back to the view it had
+  if(m === "browse"){ flowView = curView; setView("top"); } else setView(flowView);
   if(m === "flow") for(const d of devs){ setLed(d, ledFor(d.state)); refresh(d); } else browseShow(idx);
 }
 document.getElementById("modeFlow").onclick = () => setMode("flow");
@@ -689,16 +727,18 @@ reset(false);
 // Garment controls sit under each device on screen
 const corner = new THREE.Vector3();
 function placeGarment(){
-  for(const d of devs){
-    if(d.garmentEl.hidden) continue;
+  const items = devs.map(d => [d.garmentEl, d, 12]);         // [element, device, gap below the device in px]
+  if(mode === "browse") items.push([document.getElementById("browseCtl"), devs[0], 48]);   // under the one device
+  for(const [el, d, gap] of items){
+    if(el.hidden) continue;
     let x0 = Infinity, x1 = -Infinity, y1 = -Infinity;
     for(const cx of [-1, 1]) for(const cy of [0, 1]) for(const cz of [-1, 1]){
       corner.set(d.group.position.x + cx*DIM.L/2, cy*DIM.H, cz*DIM.D/2).project(cam);
       const sx = (corner.x + 1)/2*innerWidth, sy = (1 - corner.y)/2*innerHeight;
       x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y1 = Math.max(y1, sy);
     }
-    const el = d.garmentEl, h = el.offsetHeight, w = el.offsetWidth;
-    const x = Math.min(innerWidth - w/2 - 8, Math.max(w/2 + 8, (x0 + x1)/2)), y = Math.min(innerHeight - h - 8, y1 + 12);
+    const h = el.offsetHeight, w = el.offsetWidth;
+    const x = Math.min(innerWidth - w/2 - 8, Math.max(w/2 + 8, (x0 + x1)/2)), y = Math.min(innerHeight - h - 8, y1 + gap);
     el.style.transform = `translate(${x - w/2}px, ${y}px)`;
   }
 }
@@ -753,7 +793,7 @@ const VIEWS = {
   buttons: {pos:[-150, DIM.H + 90, -360], tgt:[0, DIM.H*0.5, 0]},
   front:   {pos:[0, DIM.H/2, 430], tgt:[0, DIM.H/2, 11]},      // target on the front face, so it measures true
 };
-let fly = null, curView = "angled";
+let fly = null, curView = "angled", flowView = "angled";
 function setView(name, instant){
   curView = name;
   const v = (mode === "browse" ? VIEWS1 : VIEWS)[name], to = {pos:new THREE.Vector3(...v.pos), tgt:new THREE.Vector3(...v.tgt)};
