@@ -205,10 +205,10 @@
         <div class="seg" id="pfSize" role="radiogroup" aria-label="Font size"></div>
         <span class="sep"></span>
         <button class="btn" id="pfUse" title="Show Custom Pixel on the HMI screens above">Use on HMI screens</button>
-        <button class="btn" id="pfExportJs" title="Save the font as a file; put it next to DisplaySim.html to make it everyone's starting point">Download pixel-font.js</button>
+        <button class="btn" id="pfExportJs" title="Save the font (glyphs and letter spacing; not the icons) as a file; put it next to DisplaySim.html to make it everyone's starting point">Download pixel-font.js</button>
         <button class="btn" id="pfExportBdf" title="This size as a BDF bitmap font, for U8g2 and other firmware font tools">Download BDF</button>
         <button class="btn" id="pfIconPng" hidden title="This icon as a PNG, one image pixel per display pixel, white on black">Download PNG</button>
-        <button class="btn" id="pfIconZip" hidden title="Every icon as a PNG (one image pixel per display pixel, white on black) in a zip, with icons.csv listing each one's size and screen position">Download all PNGs</button>
+        <button class="btn" id="pfIconZip" hidden title="Every icon as a PNG (one image pixel per display pixel, white on black) in a zip, with icons.csv listing each one's size and screen position, and icons.js that the pages load. Unzip it over the hmi-icons folder.">Download all PNGs</button>
         <button class="btn" id="pfIconH" hidden title="Every icon as an XBM bitmap in a C header, with its size and screen position, for u8g2 drawXBMP">Download icons.h</button>
         <label class="btn" style="display:inline-flex;align-items:center;cursor:pointer">Import…<input type="file" id="pfImport" accept=".js,.json" hidden></label>
       </div>
@@ -229,7 +229,7 @@
       <div class="pfpreview"><canvas id="pfPreview"></canvas></div>
       <div class="row">
         <button class="btn" id="pfLoadFont" title="Replace the glyphs (and letter spacing) with pixel-font.js as it is in this folder now">Load font from pixel-font.js…</button>
-        <button class="btn" id="pfLoadIcons" title="Replace the icons with pixel-font.js as it is in this folder now (the same icons as hmi-icons/)">Load icons from pixel-font.js…</button>
+        <button class="btn" id="pfLoadIcons" title="Replace the icons with hmi-icons/icons.js as it is in this folder now (the same icons as the PNGs there)">Load icons from hmi-icons…</button>
         <button class="btn" id="pfRegen">Regenerate from Plus Jakarta Sans…</button>
         <label class="switch" title="Draw letters 13% narrower than Plus Jakarta Sans, so they look right on the panel's wide pixels"><input type="checkbox" id="pfNarrow" checked><span class="track"></span>Narrow for wide pixels</label>
       </div>
@@ -285,8 +285,9 @@
 </main>
 
 <script src="hmi-screens.js"></script>
-<!-- pixel-font.js changes whenever the font is re-exported: load it fresh, not from the browser cache -->
-<script>document.write('<script src="pixel-font.js?v=' + Date.now() + '"><\/script>');</script>
+<!-- The font (pixel-font.js) and the icons (hmi-icons/icons.js) change whenever they're re-exported: load them fresh,
+     not from the browser cache -->
+<script>document.write('<script src="pixel-font.js?v=' + Date.now() + '"><\/script><script src="hmi-icons/icons.js?v=' + Date.now() + '"><\/script>');</script>
 <script>
 // ---- Panel geometry, all in mm (Winstar WEA012840A spec sheet) ----
 const W = 128, H = 40;
@@ -1414,34 +1415,38 @@ $("pfRegen").onclick = async () => {
   pf = gen; pfBase = {...clone(gen), icons: pfBase.icons}; pfUndo.length = 0;
   store(PF_BASE_KEY, JSON.stringify(pfBase)); pfVer++; pfGlyphCache.clear(); pfSave(); pfRenderAll(); redraw(); syncSizes();
 };
-// Load from the folder: pixel-font.js as it is on disk right now, read fresh on each click (not the copy this page
+// Load from the folder: the files as they are on disk right now, read fresh on each click (not the copies this page
 // loaded at startup, not this browser's saved edits). A script tag with a fresh URL works for http and file:// alike.
-function pfReadFile(){
+function pfReadScript(src, get){
   return new Promise((res, rej) => {
-    const s = document.createElement("script"); s.src = "pixel-font.js?v=" + Date.now();
-    s.onload = () => { s.remove(); const f = window.PIXEL_FONT && window.PIXEL_FONT.sizes ? pfPrune(clone(window.PIXEL_FONT)) : null; f ? res(f) : rej(new Error("no font in pixel-font.js")); };
-    s.onerror = () => { s.remove(); rej(new Error("pixel-font.js not found")); };
+    const s = document.createElement("script"); s.src = src + "?v=" + Date.now();
+    s.onload = () => { s.remove(); const v = get(); v ? res(v) : rej(new Error("nothing in " + src)); };
+    s.onerror = () => { s.remove(); rej(new Error(src + " not found")); };
     document.head.appendChild(s);
   });
 }
-async function pfLoadFromFile(what){                    // what: "font" (glyphs + letter spacing) or "icons"
+const pfReadFont = () => pfReadScript("pixel-font.js", () => window.PIXEL_FONT && window.PIXEL_FONT.sizes ? pfPrune(clone(window.PIXEL_FONT)) : null);
+const pfReadIcons = () => pfReadScript("hmi-icons/icons.js", () => window.HMI_ICONS ? clone(window.HMI_ICONS) : null);
+async function pfLoadFromFile(what){                    // what: "font" (pixel-font.js: glyphs + letter spacing) or "icons" (hmi-icons/icons.js)
   if(!pf) return;
-  let file;
-  try{ file = await pfReadFile(); }catch(e){ alert("Couldn't read pixel-font.js. Keep it in the same folder as this page."); return; }
-  const fileSp = pfUnbake(file);                        // glyphs as drawn; the spacing goes to the Letter spacing setting
+  let note = "";
   if(what === "font"){
+    let file;
+    try{ file = await pfReadFont(); }catch(e){ alert("Couldn't read pixel-font.js. Keep it in the same folder as this page."); return; }
     if(!confirm("Replace the font with pixel-font.js from this folder? Glyph edits that aren't in the file will be lost. Icons stay as they are.")) return;
+    const fileSp = pfUnbake(file);                      // glyphs as drawn; the spacing goes to the Letter spacing setting
     pf.sizes = file.sizes; pfBase.sizes = clone(file.sizes); pfSetSpacing(fileSp);
+    note = `Loaded the font from pixel-font.js${fileSp === null ? " (the file records no letter spacing; the setting is unchanged)" : `, letter spacing ${fileSp}`}.`;
   } else {
-    if(!file.icons){ alert("pixel-font.js has no icons."); return; }
-    if(!confirm("Replace the icons with pixel-font.js from this folder? Icon edits that aren't in the file will be lost. The font stays as it is.")) return;
-    pf.icons = file.icons; pfBase.icons = clone(file.icons); pfEnsureIcons();
+    let icons;
+    try{ icons = await pfReadIcons(); }catch(e){ alert("Couldn't read hmi-icons/icons.js. Keep the hmi-icons folder next to this page."); return; }
+    if(!confirm("Replace the icons with hmi-icons/icons.js from this folder? Icon edits that aren't in the file will be lost. The font stays as it is.")) return;
+    pf.icons = icons; pfBase.icons = clone(icons); pfEnsureIcons();
+    note = `Loaded ${Object.keys(icons).length} icons from hmi-icons/icons.js.`;
   }
   pfUndo.length = 0; store(PF_BASE_KEY, JSON.stringify(pfBase));
   pfVer++; pfGlyphCache.clear(); pfSave(); pfRenderAll(); redraw(); syncSizes();
-  $("pfNote").textContent = what === "font"
-    ? `Loaded the font from pixel-font.js${fileSp === null ? " (the file records no letter spacing; the setting is unchanged)" : `, letter spacing ${fileSp}`}.`
-    : `Loaded ${Object.keys(file.icons).length} icons from pixel-font.js.`;
+  $("pfNote").textContent = note;                       // after the redraw, which writes its own note
 }
 $("pfLoadFont").onclick = () => pfLoadFromFile("font");
 $("pfLoadIcons").onclick = () => pfLoadFromFile("icons");
@@ -1491,13 +1496,20 @@ function pfToJs(font){                                  // one glyph per line, s
     const gl = Object.entries(glyphs).map(([ch, g]) => `      ${JSON.stringify(ch)}: ${JSON.stringify(g)}`).join(",\n");
     return `    ${JSON.stringify(k)}: {${Object.entries(meta).map(([a, b]) => `${JSON.stringify(a)}: ${JSON.stringify(b)}`).join(", ")}, "glyphs": {\n${gl}\n    }}`;
   }).join(",\n");
-  const {sizes: _, icons: __, ...meta} = font;
-  const icons = font.icons ? Object.entries(font.icons).map(([k, ic]) => `    ${JSON.stringify(k)}: ${JSON.stringify(ic)}`).join(",\n") : "";
-  return `// Custom Pixel — bitmap font and icons for the 128×40 display, edited in DisplaySim.html (Pixel editor).\n` +
+  const {sizes: _, icons: __, ...meta} = font;          // the font only: the icons have their own file (pfIconsToJs)
+  return `// Custom Pixel — the bitmap font for the 128×40 display, edited in DisplaySim.html (Pixel editor).\n` +
     `// Each glyph: advance in px and rows top to bottom ("#" = lit); the baseline is under row "asc".\n` +
-    `// Each icon: its top-left x, y on the screen, width (adv) and rows.\n` +
-    `window.PIXEL_FONT = {${Object.entries(meta).map(([a, b]) => `${JSON.stringify(a)}: ${JSON.stringify(b)}`).join(", ")}, "sizes": {\n${sizes}\n  }` +
-    (icons ? `,\n  "icons": {\n${icons}\n  }` : "") + `};\n`;
+    `// Letter spacing is baked into the letters' advances ("letterSpacing"). The icons are in hmi-icons/icons.js.\n` +
+    `window.PIXEL_FONT = {${Object.entries(meta).map(([a, b]) => `${JSON.stringify(a)}: ${JSON.stringify(b)}`).join(", ")}, "sizes": {\n${sizes}\n  }};\n`;
+}
+// hmi-icons/icons.js: every icon, one per line; exported in the same zip as the PNGs and icons.csv
+function pfIconsToJs(icons){
+  const list = PIX_ICONS.filter(i => icons[i.key]).map(i => { const {x, y, adv, rows} = icons[i.key];
+    return `  ${JSON.stringify(i.key)}: ${JSON.stringify({x, y, adv, rows})}`; }).join(",\n");
+  return `// HMI icons for the 128×40 display: the same icons as the PNGs next to this file (icons.csv lists them),\n` +
+    `// exported together from DisplaySim.html (Pixel editor → Icons → Download all PNGs).\n` +
+    `// Each icon: its top-left x, y on the screen, width (adv) and rows top to bottom ("#" = lit).\n` +
+    `window.HMI_ICONS = {\n${list}\n};\n`;
 }
 $("pfExportJs").onclick = () => { if(pf) download("pixel-font.js", pfToJs(pfBake(pf)), "text/javascript"); };
 function pfToBdf(font, key){
@@ -1561,6 +1573,7 @@ async function pfIconsZip(){
   const csv = ["file,name,label,width,height,x,y", ...list.map(i => { const ic = pf.icons[i.key];
     return [iconFile(i.key), i.c, `"${i.label}"`, ic.adv, ic.rows.length, ic.x, ic.y].join(","); })].join("\n") + "\n";
   files.push({name:"icons.csv", data: new TextEncoder().encode(csv)});
+  files.push({name:"icons.js", data: new TextEncoder().encode(pfIconsToJs(pf.icons))});   // what the pages load the icons from
   saveBlob("hmi-icons.zip", makeZip(files));
 }
 function pfIconsHeader(){
@@ -1612,6 +1625,7 @@ const PF_FILE_KEY = "dsim-pixelfont-file";
   let saved = null, base = null;
   try{ saved = JSON.parse(store(PF_KEY) || "null"); base = JSON.parse(store(PF_BASE_KEY) || "null"); }catch(e){}
   const file = window.PIXEL_FONT && window.PIXEL_FONT.sizes ? pfPrune(clone(window.PIXEL_FONT)) : null;
+  if(file && window.HMI_ICONS) file.icons = clone(window.HMI_ICONS);   // the icons' own file wins over any in an older font file
   const fileSp = file ? pfUnbake(file) : null;
   pf = pfPrune(saved) || file; pfBase = pfPrune(base) || (file && clone(file));
   if(file){

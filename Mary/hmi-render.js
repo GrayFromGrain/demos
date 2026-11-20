@@ -1,5 +1,6 @@
 // hmi-render.js — draws the HMI screens into a 128×40 framebuffer the way the device firmware would: the Custom Pixel
-// bitmap font and pixel icons exported from DisplaySim.html (pixel-font.js), and the screen list in hmi-screens.js.
+// bitmap font (pixel-font.js) and pixel icons (hmi-icons/icons.js) exported from DisplaySim.html, and the screen list
+// in hmi-screens.js.
 // No outline fonts and no editor state: one font size, every glyph and icon on whole pixels.
 //
 //   const s = HMI.frame("Place in Garment", {t: ms since the screen appeared, caps, textMode, swap});
@@ -82,7 +83,8 @@
   }
   const drawCentered = (fb, L, cx, base) => drawString(fb, L, Math.round(cx - (L.minX + L.maxX)/2), Math.round(base));
   function drawIcon(fb, name, dx = 0){
-    const ic = window.PIXEL_FONT && window.PIXEL_FONT.icons && window.PIXEL_FONT.icons[name]; if(!ic) return;
+    // hmi-icons/icons.js (the icons' own file, exported with the PNGs); older font files carried them inside
+    const icons = window.HMI_ICONS || (window.PIXEL_FONT && window.PIXEL_FONT.icons), ic = icons && icons[name]; if(!ic) return;
     ic.rows.forEach((row, r) => { for(let c = 0; c < row.length; c++) if(row[c] === "#"){
       const x = ic.x + dx + c, y = ic.y + r; if(x >= 0 && x < W && y >= 0 && y < H) fb[y*W + x] = 1; } });
   }
