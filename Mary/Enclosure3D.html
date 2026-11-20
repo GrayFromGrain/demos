@@ -95,6 +95,7 @@
     <button class="btn" id="modeAll" aria-pressed="false">All states</button>
   </div>
   <label class="switch" id="enclRow" title="Show the enclosure, or only each display and its LED" hidden><input type="checkbox" id="encl" checked><span class="track"></span>Enclosure</label>
+  <label class="switch" id="animRow" title="Off: LEDs steady on and every display held on its first frame, for screen captures" hidden><input type="checkbox" id="anim" checked><span class="track"></span>Play Animation</label>
   <button class="btn" id="resetTop" title="Both devices off, out of the garment">↺ Reset</button>
 </nav>
 <div class="panel hmi" aria-labelledby="optTitle">
@@ -762,7 +763,8 @@ function showOn(d, name, swap = []){
 // Draw the device's current screen at this moment; only redraws the texture when the pixels change
 function paint(d, now){
   if(!d.screen) return;
-  const f = HMI.frame(d.screen.name, {t: now - d.screen.t0, swap: d.screen.swap, caps: capsBox.checked, textMode});
+  const still = mode === "all" && !animBox.checked;         // All states, Play Animation off: the first frame
+  const f = HMI.frame(d.screen.name, {t: still ? 0 : now - d.screen.t0, swap: d.screen.swap, caps: capsBox.checked, textMode});
   d.animated = f.animated;
   if(f.key !== d.frameKey){ d.frameKey = f.key; f.draw(d.fb); drawDisplay(d); }
 }
@@ -887,6 +889,7 @@ function setMode(m){
   if(all) buildTiles();
   allGroup.visible = all; device.visible = !all; labelsEl.hidden = !all;
   document.getElementById("enclRow").hidden = !all;
+  document.getElementById("animRow").hidden = !all;
   document.querySelector(".devled").hidden = all;
   // 3D settings in All states: only the actual-size calibration (it's always at actual size, on a flat top view)
   $("viewTitle").textContent = all ? "Actual size" : "3D view";
@@ -994,6 +997,19 @@ function setEnclosure(){
   layoutTiles();
 }
 enclBox.onchange = setEnclosure;
+// Play Animation (All states): off holds every LED on (a blink's on phase, a fade's first color) and every display on
+// the first frame of its text animation, with the timer back at its start; for screen captures. On restarts them all.
+const animBox = document.getElementById("anim");
+try{ animBox.checked = localStorage.getItem("enc3d-anim") !== "0"; }catch(e){}
+animBox.onchange = () => {
+  try{ localStorage.setItem("enc3d-anim", animBox.checked ? "1" : "0"); }catch(e){}
+  const now = performance.now();
+  for(const t of tiles){
+    t.ledT0 = now; if(t.screen) t.screen.t0 = now;
+    if(t.timer){ t.secs = TREAT_S; showOn(t, t.name, tileSwap(t)); }
+    t.frameKey = null; paint(t, now);
+  }
+};
 // Grid that fills the free part of the window (right of the settings panel, under the navigation), in flow order
 function layoutTiles(){
   if(!tiles.length) return;
@@ -1053,11 +1069,11 @@ function tickTiles(now){
   const dt = (now - tileTick)/1000; tileTick = now;
   if(mode !== "all") return;
   for(const t of tiles){
-    if(t.timer){
+    if(t.timer && animBox.checked){
       t.secs -= dt * +document.getElementById("speed").value; if(t.secs <= 0) t.secs += TREAT_S;
       if(now - tileTimerPost > 66){ tileTimerPost = now; showOn(t, t.name, tileSwap(t)); }
     }
-    const c = ledColorAt(t, now);
+    const c = ledColorAt(t, animBox.checked ? now : t.ledT0);   // held: the LED's first moment, which is on
     if(c){ t.ledMat.color.copy(c).multiplyScalar(LED_GAIN); t.haloMat.color.copy(c).multiplyScalar(HALO_GAIN * (enclBox.checked ? 1 - coverMat.opacity : 1)); t.halo.visible = true; }
     else { t.ledMat.color.set("#2a2a2d"); t.halo.visible = false; }
   }
@@ -1199,7 +1215,7 @@ renderer.setAnimationLoop(now => {
   }
   controls.update();
   tickHold(now); tickFlow(now); tickTiles(now);
-  for(const d of allDisplays()) if(d.animated) paint(d, now);   // long text scrolls / steps
+  if(mode !== "all" || animBox.checked) for(const d of allDisplays()) if(d.animated) paint(d, now);   // long text scrolls / steps
   for(const b of clickables){                               // press in (held), spring back
     const u = b.userData;
     if(u.held){ b.position.copy(u.home).addScaledVector(u.axis, u.depth); continue; }
