@@ -217,7 +217,9 @@ const DIM = {
   L: 58.65, D: 24.5, H: 97.8,                  // housing: length, depth (top view, without button rims), height
   bow: 2.25,                                   // the body arcs this far toward the button side over its length
   waist: 0.65,                                 // and is this much narrower per side in the middle
-  bodyBevel: 2.5, topBevel: 0.8,               // rounding at the bottom and top edges of the housing
+  bodyBevel: 2.5,                              // rounding at the bottom edge of the housing (its top meets the cover square)
+  // the housing is full width from the cover down to just under the power button, then this much narrower per side
+  band: {bottom: 75.5, step: 0.5, groove: 0.35},   // groove: the dark parting line at the step, this tall
   // top cover, two layers. Outer: a thin hollow shell of translucent black plastic over everything, display included
   // (top height, top wall and side wall thickness, how far its sides come down, edge rounding, and its tint: the share
   // of the display's light it absorbs, 0 = clear, 1 = opaque; the Cover tint slider in Specs changes it live).
@@ -331,24 +333,35 @@ const device = new THREE.Group(); scene.add(device); device.add(shadowMesh);
 
 // Housing (C-0505): one smooth skin lofted through inset copies of the outline, rounded at the bottom and top edges
 function housing(){
-  const Rb = DIM.bodyBevel, Rt = DIM.topBevel, prof = [], K = 8;
-  for(let k = 0; k <= K; k++){ const a = k/K*Math.PI/2; prof.push([Rb*(1 - Math.cos(a)), Rb*(1 - Math.sin(a))]); }
-  const top = DIM.cover.top - DIM.cover.skirt;               // the housing stops where the cover's sides come down to
-  for(let k = K; k >= 0; k--){ const a = k/K*Math.PI/2; prof.push([top - Rt*(1 - Math.cos(a)), Rt*(1 - Math.sin(a))]); }
-  const rings = prof.map(([y, inset]) => ({y, pts: outline(inset, 96)})), M = rings[0].pts.length;
-  const pos = [], idx = [];
-  for(const r of rings) for(const p of r.pts) pos.push(p.x, r.y, -p.y);
-  for(let i = 0; i < rings.length - 1; i++) for(let j = 0; j < M; j++){
-    const a = i*M + j, b = i*M + (j + 1)%M, c = (i + 1)*M + (j + 1)%M, d = (i + 1)*M + j;
-    idx.push(a, d, b, b, d, c);
-  }
-  const g = new THREE.BufferGeometry();
-  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
-  const grp = new THREE.Group(); grp.add(new THREE.Mesh(g, plastic));
-  for(const [r, up] of [[rings[0], false], [rings[rings.length - 1], true]]){      // flat bottom and top faces
-    const cap = new THREE.ShapeGeometry(new THREE.Shape(r.pts)); cap.rotateX(-Math.PI/2); cap.translate(0, r.y, 0);
-    grp.add(new THREE.Mesh(cap, up ? plastic : plasticBack));
-  }
+  // A smooth skin lofted through inset copies of the outline: [y, inset] from bottom to top, with flat end faces
+  const loft = (prof, caps, mat = plastic) => {
+    const rings = prof.map(([y, inset]) => ({y, pts: outline(inset, 96)})), M = rings[0].pts.length;
+    const pos = [], idx = [];
+    for(const r of rings) for(const p of r.pts) pos.push(p.x, r.y, -p.y);
+    for(let i = 0; i < rings.length - 1; i++) for(let j = 0; j < M; j++){
+      const a = i*M + j, b = i*M + (j + 1)%M, c = (i + 1)*M + (j + 1)%M, d = (i + 1)*M + j;
+      idx.push(a, d, b, b, d, c);
+    }
+    const g = new THREE.BufferGeometry();
+    g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+    const out = [new THREE.Mesh(g, mat)];
+    for(const [r, up] of caps.map(([i, up]) => [rings[i < 0 ? rings.length + i : i], up])){
+      const cap = new THREE.ShapeGeometry(new THREE.Shape(r.pts)); cap.rotateX(-Math.PI/2); cap.translate(0, r.y, 0);
+      out.push(new THREE.Mesh(cap, up ? plastic : plasticBack));
+    }
+    return out;
+  };
+  const Rb = DIM.bodyBevel, {bottom, step, groove} = DIM.band, K = 8, top = DIM.cover.top - DIM.cover.skirt;   // up to the cover's sides
+  // Lower body: rounded at the bottom, narrower by `step`, up to the band
+  const lower = [];
+  for(let k = 0; k <= K; k++){ const a = k/K*Math.PI/2; lower.push([Rb*(1 - Math.cos(a)), step + Rb*(1 - Math.sin(a))]); }
+  lower.push([bottom, step]);
+  // Parting line: a shallow dark groove where the two parts meet
+  const line = [[bottom, step + 0.2], [bottom + groove, step + 0.2]];
+  // Band: full width, square at the top where it meets the cover (no rounding there) and at the step below
+  const band = [[bottom + groove, 0], [top, 0]];
+  const grp = new THREE.Group();
+  grp.add(...loft(lower, [[0, false]]), ...loft(line, [], core), ...loft(band, [[0, false], [-1, true]]));   // the band's underside shows as the step
   return grp;
 }
 device.add(housing());
@@ -504,6 +517,7 @@ function sideButton(name, spec, radii, drawIcon){
   geo.translate(0, 0, -1.6);                                 // front face at z = 0
   const holder = new THREE.Group();                           // sits on the housing surface, +z = outward
   holder.position.set(side.pt.x, spec.y, -side.pt.y); holder.rotation.y = sideAngle; device.add(holder);
+  if(spec.y + h/2 < DIM.band.bottom) holder.position.addScaledVector(sideN, -DIM.band.step);   // below the band: on the narrower body
   const gapGeo = conform(new THREE.ShapeGeometry(roundRect(new THREE.Shape(), 0, 0, w + 0.7, h + 0.7, radii.map(r => r + 0.35)), 24));
   const gap = new THREE.Mesh(gapGeo, gapMat); holder.add(gap);   // dark gap around the button, drawn over the housing surface
   const m = new THREE.Mesh(conform(geo), plastic); m.position.z = B.out;
