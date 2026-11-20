@@ -14,7 +14,6 @@
 
   // ---- Layout settings (what would be constants in the device code) ----
   const CONFIG = {
-    letterSpacing: 0,          // extra px between letters; text without letters (timer, percentages) keeps its spacing
     centerTextOnly: true,      // text-only screens: lit rows centered on the 40 rows
     scrollPx: 40,              // long text: scroll speed in px/s, 1 px at a time
     stepMs: 1000,              // long text, step mode: each half shows this long
@@ -58,15 +57,16 @@
     }
     glyphCache.set(ch, out); return out;
   }
-  function layout(text){                                  // pens with letter spacing, and the ink's left and right edges
-    const sp = /\p{L}/u.test(text) ? CONFIG.letterSpacing : 0, items = [];
-    let pen = 0, minX = Infinity, maxX = -Infinity, i = 0;
+  // Letter spacing is baked into pixel-font.js: letters' advances include it (a glyph's rows may run past its advance
+  // when the spacing is negative), so pens just add advances.
+  function layout(text){                                  // pens, and the ink's left and right edges
+    const items = []; let pen = 0, minX = Infinity, maxX = -Infinity;
     for(const ch of text){
-      const g = glyph(ch), p = pen + i*sp; items.push([p, g]);
-      if(g.inkL !== null){ minX = Math.min(minX, p + g.inkL); maxX = Math.max(maxX, p + g.inkR); }
-      pen += g.adv; i++;
+      const g = glyph(ch); items.push([pen, g]);
+      if(g.inkL !== null){ minX = Math.min(minX, pen + g.inkL); maxX = Math.max(maxX, pen + g.inkR); }
+      pen += g.adv;
     }
-    return {items, width: pen + sp*Math.max(0, i - 1), minX: isFinite(minX) ? minX : 0, maxX: isFinite(maxX) ? maxX : 0};
+    return {items, width: pen, minX: isFinite(minX) ? minX : 0, maxX: isFinite(maxX) ? maxX : 0};
   }
   function inkRows(L, base){                              // [top, bottom] lit rows of a laid-out string on this baseline
     let y0 = Infinity, y1 = -Infinity;
@@ -97,6 +97,9 @@
   // opts: t (ms since it appeared), caps (All caps), textMode ("scroll" | "step"),
   //       swap ([[regex, text], …] applied to the screen's text before caps: live timer, wording, Dock Left, Paused)
   function frame(name, {t = 0, caps = false, textMode = "scroll", swap = []} = {}){
+    // A frame's timestamp can be a moment before the screen appeared: never let the time go negative (in step mode
+    // that would pick half −1, which doesn't exist)
+    t = Math.max(0, t || 0);
     const st = SCREENS.find(s => s.name === name) || {name}, lay = LAYOUTS[name] || [];
     const fix = text => { for(const [a, b] of swap) text = text.replace(new RegExp(a, "g"), b); return caps ? text.toUpperCase() : text; };
     const centered = CONFIG.centerTextOnly && !lay.some(it => it.icon || it.bars !== undefined);

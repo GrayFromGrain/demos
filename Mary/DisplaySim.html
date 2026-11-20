@@ -171,7 +171,7 @@
           <option value="design">As designed</option><option value="300">300 Light</option><option value="400">400 Regular</option>
           <option value="500">500 Medium</option><option value="600">600 SemiBold</option><option value="700">700 Bold</option><option value="800">800 ExtraBold</option>
         </select>
-        <span class="lbl" title="Extra space between letters, in display pixels. Negative tightens. Text without letters (the timer, battery percentages) isn't spaced.">Letter spacing</span><input type="number" id="hspace" min="-4" max="12" step="1" value="0" aria-label="Letter spacing in px"><span class="lbl">px</span>
+        <span class="lbl" title="Extra space after each letter, in display pixels. Negative tightens. Digits and punctuation keep their width, so the timer and percentages aren't spaced. Baked into the letters' advances in the pixel font exports (pixel-font.js and BDF).">Letter spacing</span><input type="number" id="hspace" min="-4" max="12" step="1" value="0" aria-label="Letter spacing in px"><span class="lbl">px</span>
       </div>
       <div class="row">
         <label class="switch" title="When you switch fonts, rescale every size so capitals stay as tall"><input type="checkbox" id="hcap" checked><span class="track"></span>Match cap height</label>
@@ -692,26 +692,31 @@ function pairKern(font, a, b){
   gctx.font = font; const k = Math.round(gctx.measureText(a + b).width - gctx.measureText(a).width - gctx.measureText(b).width);
   kernCache.set(key, k); return k;
 }
-// Letter spacing (display px) for the HMI text: added between letters in every layout path below. Text with no
-// letters (the timer, battery percentages) keeps its natural spacing.
-const letterSp = text => { const v = parseFloat($("hspace").value); return isFinite(v) && /\p{L}/u.test(text) ? v : 0; };
-function spaceLayout(L, sp){
-  if(!sp || L.glyphs.length < 2) return L;
+// Letter spacing (display px): added after every letter, as if baked into the letter's advance; digits, punctuation
+// and spaces keep their width, so the timer and battery percentages are untouched even next to a word. The pixel
+// font exports (pixel-font.js, BDF) bake it in the same way, so this preview matches the firmware.
+const isLetter = ch => /\p{L}/u.test(ch);
+const spacingPx = () => { const v = parseFloat($("hspace").value); return isFinite(v) ? Math.round(v) : 0; };
+const lettersBefore = text => { let n = 0; return [...text].map(ch => { const k = n; if(isLetter(ch)) n++; return k; }); };
+const letterCount = text => [...text].filter(isLetter).length;
+function spaceLayout(L, text, sp){
+  if(!sp || !letterCount(text)) return L;
+  const before = lettersBefore(text);
   let minX = Infinity, maxX = -Infinity;
   const glyphs = L.glyphs.map(([pen, g], i) => {
-    const p = pen + i*sp;
+    const p = pen + before[i]*sp;
     if(g.inkL !== null){ minX = Math.min(minX, p + g.inkL); maxX = Math.max(maxX, p + g.inkR); }
     return [p, g];
   });
-  return {glyphs, width: L.width + sp*(L.glyphs.length - 1), minX: isFinite(minX) ? minX : 0, maxX: isFinite(maxX) ? maxX : 0};
+  return {glyphs, width: L.width + sp*letterCount(text), minX: isFinite(minX) ? minX : 0, maxX: isFinite(maxX) ? maxX : 0};
 }
-function fillSpaced(x, text, left, base, sp = letterSp(text)){   // fillText with letter spacing; keeps the font's kerning
-  if(!sp) return x.fillText(text, left, base);
-  let pre = "";
-  [...text].forEach((ch, i) => { x.fillText(ch, left + x.measureText(pre).width + i*sp, base); pre += ch; });
+function fillSpaced(x, text, left, base, sp = spacingPx()){   // fillText with letter spacing; keeps the font's kerning
+  if(!sp || !letterCount(text)) return x.fillText(text, left, base);
+  const before = lettersBefore(text); let pre = "";
+  [...text].forEach((ch, i) => { x.fillText(ch, left + x.measureText(pre).width + before[i]*sp, base); pre += ch; });
 }
-const spacedWidth = (x, text, sp = letterSp(text)) => x.measureText(text).width + sp * Math.max(0, [...text].length - 1);
-const layoutString = (font, text) => spaceLayout(layoutStringRaw(font, text), letterSp(text));
+const spacedWidth = (x, text, sp = spacingPx()) => x.measureText(text).width + sp * letterCount(text);
+const layoutString = (font, text) => spaceLayout(layoutStringRaw(font, text), text, spacingPx());
 function layoutStringRaw(font, text){
   if(isCustom(font)) return customLayout(font, text);
   const glyphs = []; let pen = 0, minX = Infinity, maxX = -Infinity;
@@ -835,7 +840,7 @@ function drawText(x, font, text, cx, base, hint = true){   // centered on the in
     return drawBitmapString(x, L, Math.round(cx - (L.minX + L.maxX)/2), Math.round(base));
   }
   x.font = font; x.fillStyle = "#fff"; x.textBaseline = "alphabetic"; x.textAlign = "left";
-  const m = x.measureText(text), sp = letterSp(text) * Math.max(0, [...text].length - 1);
+  const m = x.measureText(text), chars = [...text], sp = spacingPx() * (chars.length ? lettersBefore(text)[chars.length - 1] : 0);   // spacing between first and last ink
   let left = cx - (m.actualBoundingBoxRight - m.actualBoundingBoxLeft + sp)/2;
   if(snapOn()){ left = Math.round(left); base = Math.round(base); }   // glyph grids start on a pixel boundary
   fillSpaced(x, text, left, base);
@@ -930,7 +935,7 @@ const caps = t => $("hcaps").checked ? t.toUpperCase() : t;   // All caps: displ
 const centersText = (st, original) => !original && $("hvc").checked && !(LAYOUTS[st.name] || []).some(it => it.icon || it.bars !== undefined);
 const inkCache = new Map();
 function inkRows(font, text, base, hint){               // [top, bottom] lit rows of the whole string at this baseline
-  const key = [font, text, base, hint, bitmapOn(), snapOn(), $("thresh").value, pfVer, letterSp(text)].join("|");
+  const key = [font, text, base, hint, bitmapOn(), snapOn(), $("thresh").value, pfVer, spacingPx()].join("|");
   if(inkCache.has(key)) return inkCache.get(key);
   const bitmap = useBitmap(font, hint), L = bitmap ? layoutString(font, text) : null;
   wctx.font = font;
@@ -947,6 +952,7 @@ function inkRows(font, text, base, hint){               // [top, bottom] lit row
 }
 const centerShift = (font, text, base, hint) => { const r = inkRows(font, text, base, hint); return r ? Math.floor((H - (r[1] - r[0] + 1)) / 2) - r[0] : 0; };
 function frame(st, im, t, col){
+  t = Math.max(0, t || 0);                              // a frame's timestamp can come just before the screen appeared
   const original = showOriginal(st), layout = LAYOUTS[st.name] || [], k = colK(col), center = centersText(st, original);
   const texts = original ? designItems(st, false).filter(it => it.long) : itemsFor(st);
   const statics = texts.filter(it => !it.long && it.text).map(it => {
@@ -1409,9 +1415,10 @@ $("pfRegen").onclick = async () => {
 };
 $("pfReset").onclick = () => {
   const file = window.PIXEL_FONT && window.PIXEL_FONT.sizes ? pfPrune(clone(window.PIXEL_FONT)) : null;
+  const fileSp = file ? pfUnbake(file) : null;
   if(!file){ alert("pixel-font.js has no saved font yet. Use Download pixel-font.js and put the file next to this page."); return; }
   if(!confirm("Replace this browser's font and icons with pixel-font.js? Edits that aren't in the file will be lost.")) return;
-  pf = file; pfBase = clone(file); pfUndo.length = 0; pfEnsureIcons();
+  pf = file; pfBase = clone(file); pfUndo.length = 0; pfEnsureIcons(); pfSetSpacing(fileSp);
   store(PF_BASE_KEY, JSON.stringify(pfBase)); pfVer++; pfGlyphCache.clear(); pfSave(); pfRenderAll(); redraw(); syncSizes();
 };
 function download(name, text, type = "text/plain"){
@@ -1427,6 +1434,33 @@ function savePng(canvas, parts){
     setTimeout(() => URL.revokeObjectURL(a.href), 1000);
   }, "image/png");
 }
+// Letter spacing is baked into the exports: each letter's advance grows (or shrinks) by the spacing; digits and
+// punctuation are left alone. Rows keep the drawn ink, padded with blank columns when the advance grows; when it
+// shrinks the rows stay as drawn and run past the advance. The file records the value as "letterSpacing" so
+// loading it back takes the spacing out again (the editor works on the glyphs as drawn) and restores the setting.
+function pfBake(font, sp = spacingPx()){
+  const out = clone(font); out.letterSpacing = sp;
+  if(sp) for(const S of Object.values(out.sizes)) for(const [ch, g] of Object.entries(S.glyphs)){
+    if(!isLetter(ch)) continue;
+    g.adv = Math.max(1, g.adv + sp);
+    if(sp > 0) g.rows = g.rows.map(r => r + ".".repeat(Math.max(0, g.adv - r.length)));
+  }
+  return out;
+}
+// Returns the spacing the file had baked in, or null for a file that doesn't record one (exported before letter
+// spacing was baked in): those leave the Letter spacing setting as it is, so the next export keeps it.
+function pfUnbake(font){
+  if(!("letterSpacing" in font)) return null;
+  const sp = Math.round(+font.letterSpacing || 0); delete font.letterSpacing;
+  if(sp) for(const S of Object.values(font.sizes)) for(const [ch, g] of Object.entries(S.glyphs)){
+    if(!isLetter(ch)) continue;
+    g.adv = Math.max(1, g.adv - sp);
+    g.rows = g.rows.map(r => r.length < g.adv ? r + ".".repeat(g.adv - r.length) : r.slice(0, g.adv));
+  }
+  return sp;
+}
+// The Letter spacing setting, from a file's baked spacing (null: the file has none recorded, keep the setting)
+const pfSetSpacing = sp => { if(sp === null || sp === undefined) return; $("hspace").value = sp; store("dsim-hspace", String(sp)); redraw(); };
 function pfToJs(font){                                  // one glyph per line, so edits make small diffs
   const sizes = Object.entries(font.sizes).map(([k, S]) => {
     const {glyphs, ...meta} = S;
@@ -1441,18 +1475,18 @@ function pfToJs(font){                                  // one glyph per line, s
     `window.PIXEL_FONT = {${Object.entries(meta).map(([a, b]) => `${JSON.stringify(a)}: ${JSON.stringify(b)}`).join(", ")}, "sizes": {\n${sizes}\n  }` +
     (icons ? `,\n  "icons": {\n${icons}\n  }` : "") + `};\n`;
 }
-$("pfExportJs").onclick = () => { if(pf) download("pixel-font.js", pfToJs(pf), "text/javascript"); };
+$("pfExportJs").onclick = () => { if(pf) download("pixel-font.js", pfToJs(pfBake(pf)), "text/javascript"); };
 function pfToBdf(font, key){
   const S = font.sizes[key], label = PF_SIZES.find(s => s.key === key).label, px = S.asc + S.desc;
   const chars = PF_CHARS.filter(ch => S.glyphs[ch]);
-  const maxAdv = Math.max(...chars.map(ch => S.glyphs[ch].adv));
+  const maxAdv = Math.max(...chars.map(ch => Math.max(S.glyphs[ch].adv, S.glyphs[ch].rows[0].length)));
   const out = ["STARTFONT 2.1", `FONT -Custom-Custom Pixel ${label}-Medium-R-Normal--${px}-${px*10}-72-72-P-${maxAdv*10}-ISO10646-1`,
     `SIZE ${px} 72 72`, `FONTBOUNDINGBOX ${maxAdv} ${px} 0 ${-S.desc}`, "STARTPROPERTIES 4",
     `FONT_ASCENT ${S.asc}`, `FONT_DESCENT ${S.desc}`, `CAP_HEIGHT ${S.cap}`, `X_HEIGHT ${S.xh}`, "ENDPROPERTIES", `CHARS ${chars.length}`];
   for(const ch of chars){
-    const g = S.glyphs[ch], code = ch.charCodeAt(0), bytes = Math.ceil(g.adv / 8);
+    const g = S.glyphs[ch], code = ch.charCodeAt(0), bw = g.rows[0].length, bytes = Math.ceil(bw / 8);   // DWIDTH: advance (letter spacing baked in); BBX: the drawn rows
     out.push(`STARTCHAR U+${code.toString(16).toUpperCase().padStart(4, "0")}`, `ENCODING ${code}`,
-      `SWIDTH ${Math.round(g.adv * 1000 / px)} 0`, `DWIDTH ${g.adv} 0`, `BBX ${g.adv} ${px} 0 ${-S.desc}`, "BITMAP");
+      `SWIDTH ${Math.round(g.adv * 1000 / px)} 0`, `DWIDTH ${g.adv} 0`, `BBX ${bw} ${px} 0 ${-S.desc}`, "BITMAP");
     for(const row of g.rows){
       let hex = "";
       for(let b = 0; b < bytes; b++){ let v = 0; for(let i = 0; i < 8; i++) if(row[b*8 + i] === "#") v |= 0x80 >> i; hex += v.toString(16).toUpperCase().padStart(2, "0"); }
@@ -1528,13 +1562,13 @@ function pfIconsHeader(){
 $("pfIconPng").onclick = () => { if(pf && pfIconMode()) pfIconPng(pfSel.icon); };
 $("pfIconZip").onclick = () => { if(pf) pfIconsZip(); };
 $("pfIconH").onclick = () => { if(pf) download("icons.h", pfIconsHeader(), "text/x-c"); };
-$("pfExportBdf").onclick = () => { if(pf) download(`custom-pixel-${pfS().cap}px.bdf`, pfToBdf(pf, pfSel.size)); };
+$("pfExportBdf").onclick = () => { if(pf) download(`custom-pixel-${pfS().cap}px.bdf`, pfToBdf(pfBake(pf), pfSel.size)); };
 $("pfImport").onchange = async e => {
   const f = e.target.files[0]; if(!f) return;
   try{
     const text = await f.text(), font = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
     if(!font.sizes || !PF_SIZES.every(S => font.sizes[S.key] && font.sizes[S.key].glyphs)) throw new Error("not a Custom Pixel font");
-    pfPrune(font);
+    pfPrune(font); const fileSp = pfUnbake(font); pfSetSpacing(fileSp);
     const oldBaseIcons = pfBase.icons, hasIcons = !!font.icons;
     if(!hasIcons) font.icons = pf.icons;                 // a file without icons keeps the current ones
     pf = font; pfBase = clone(font); if(!hasIcons && oldBaseIcons) pfBase.icons = oldBaseIcons;
@@ -1554,9 +1588,11 @@ const PF_FILE_KEY = "dsim-pixelfont-file";
   let saved = null, base = null;
   try{ saved = JSON.parse(store(PF_KEY) || "null"); base = JSON.parse(store(PF_BASE_KEY) || "null"); }catch(e){}
   const file = window.PIXEL_FONT && window.PIXEL_FONT.sizes ? pfPrune(clone(window.PIXEL_FONT)) : null;
+  const fileSp = file ? pfUnbake(file) : null;
   pf = pfPrune(saved) || file; pfBase = pfPrune(base) || (file && clone(file));
   if(file){
-    const sig = String(crc32(new TextEncoder().encode(JSON.stringify(file))));
+    // the file's identity includes its baked letter spacing: a re-export that only changes the spacing is a new file
+    const sig = String(crc32(new TextEncoder().encode(JSON.stringify(file) + (fileSp ? "|letterSpacing:" + fileSp : ""))));
     if(store(PF_FILE_KEY) !== sig){
       if(saved && pfBase){                               // glyphs and icons this browser hadn't changed follow the new file
         const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
@@ -1575,6 +1611,7 @@ const PF_FILE_KEY = "dsim-pixelfont-file";
         pfSave();
       }
       pfBase = clone(file); store(PF_FILE_KEY, sig); store(PF_BASE_KEY, JSON.stringify(pfBase));
+      pfSetSpacing(fileSp);                             // a new file brings its letter spacing
     }
   }
   if(!pf || !pfBase){

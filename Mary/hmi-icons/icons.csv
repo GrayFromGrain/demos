@@ -1,7 +1,7 @@
 file,name,label,width,height,x,y
-icon-batt-s-empty.png,batt_s_empty,"Battery S · empty",14,8,110,5
-icon-batt-s-low.png,batt_s_low,"Battery S · low",14,8,110,5
-icon-batt-s-full.png,batt_s_full,"Battery S · full",14,8,110,5
+icon-batt-s-empty.png,batt_s_empty,"Battery S · empty",15,8,110,5
+icon-batt-s-low.png,batt_s_low,"Battery S · low",15,8,110,5
+icon-batt-s-full.png,batt_s_full,"Battery S · full",15,8,110,5
 icon-batt-l-empty.png,batt_l_empty,"Battery L · empty",34,18,14,11
 icon-batt-l-low.png,batt_l_low,"Battery L · low",34,18,14,11
 icon-batt-l-full.png,batt_l_full,"Battery L · full",34,18,10,11
