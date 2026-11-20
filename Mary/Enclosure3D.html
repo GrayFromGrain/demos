@@ -96,28 +96,12 @@
     <button class="btn" id="resetIn" title="Both devices off, left in the garment from last use">In garment</button>
   </div>
 </nav>
-<div class="panel hmi" aria-label="Demo settings">
-  <div id="flowCtl" style="display:flex;flex-direction:column;gap:10px">
-    <div class="row">
-      <span class="lbl">Timer</span>
-      <select id="speed" aria-label="Treatment timer speed" style="flex:none;width:auto">
-        <option value="1">1× real time</option><option value="10">10×</option><option value="60" selected>60× (1 min ≈ 1 s)</option><option value="600">600×</option>
-      </select>
-    </div>
-    <div class="row">
-      <span class="lbl" title="Treatment Complete turns the device off after this long">Auto-off</span>
-      <select id="autoOff" aria-label="Auto-off delay after Finished" style="flex:none;width:auto">
-        <option value="5">5 s</option><option value="10" selected>10 s</option><option value="30">30 s</option>
-      </select>
-    </div>
-    <p class="note">Click the 3D buttons: ▶ is START. To start with just one device, hold ▶ for about 1 s while it's waiting for the other device.</p>
-  </div>
-  <div class="row"><label class="switch" title="Show the screen text in capitals (same setting as DisplaySim's All caps)"><input type="checkbox" id="caps"><span class="track"></span>All caps</label></div>
-  <div class="devled">
-    <b>Left</b><div class="led"><i id="ledSwatchL"></i><span id="ledTextL">LED off</span></div>
-    <b class="rightOnly">Right</b><div class="led rightOnly"><i id="ledSwatchR"></i><span id="ledTextR">LED off</span></div>
-  </div>
+<div class="panel hmi" aria-labelledby="optTitle">
+  <h2 id="optTitle">Design Options</h2>
   <p class="err" id="err" hidden></p>
+  <p class="note" id="flowNote">Click the 3D buttons: ▶ is START. To start with just one device, hold ▶ for about 1 s while it's waiting for the other device.</p>
+  <div class="row"><label class="switch" title="Show the screen text in capitals (same setting as DisplaySim's All caps)"><input type="checkbox" id="caps"><span class="track"></span>All caps</label></div>
+  <div id="wording" style="display:flex;flex-direction:column;align-items:flex-start;gap:6px"></div>
   <section class="sect" aria-labelledby="soundTitle">
     <div class="row" style="justify-content:space-between">
       <h3 id="soundTitle">Sound</h3>
@@ -125,6 +109,27 @@
     </div>
     <div class="vlist" id="soundVers"></div>
     <p class="note">Click a version to hear it. The choice is shared with HMI-Flow.</p>
+  </section>
+  <section class="sect" aria-labelledby="specTitle">
+    <h3 id="specTitle">Specs</h3>
+    <div id="flowSpecs" style="display:flex;flex-direction:column;gap:10px">
+      <div class="row">
+        <span class="lbl">Timer</span>
+        <select id="speed" aria-label="Treatment timer speed" style="flex:none;width:auto">
+          <option value="1">1× real time</option><option value="10">10×</option><option value="60" selected>60× (1 min ≈ 1 s)</option><option value="600">600×</option>
+        </select>
+      </div>
+      <div class="row">
+        <span class="lbl" title="Treatment Complete turns the device off after this long">Auto-off</span>
+        <select id="autoOff" aria-label="Auto-off delay after Finished" style="flex:none;width:auto">
+          <option value="5">5 s</option><option value="10" selected>10 s</option><option value="30">30 s</option>
+        </select>
+      </div>
+    </div>
+    <div class="devled">
+      <b>Left</b><div class="led"><i id="ledSwatchL"></i><span id="ledTextL">LED off</span></div>
+      <b class="rightOnly">Right</b><div class="led rightOnly"><i id="ledSwatchR"></i><span id="ledTextR">LED off</span></div>
+    </div>
   </section>
 </div>
 <div class="garment" id="garmentL"><b>Left</b><span class="st"></span><button class="btn" aria-pressed="false">Put in garment</button></div>
@@ -595,6 +600,38 @@ document.getElementById("soundVers").onclick = e => {
 addEventListener("storage", e => { if(e.key === "hmi-flow-versions") renderVersions(); });   // picked in HMI-Flow in another tab
 renderVersions();
 
+// Wording swaps (HMI-Flow.html's `texts` per screen; the pick is shared with it through this browser's storage)
+const TEXTS = {"Place in Garment": ["Place in Garment", "Dock to Garment", "Insert into Garment"],
+  "Waiting for Device": ["Dock Right", "Place Right", "Insert Right"]};
+const readTextPicks = () => { try{ return JSON.parse(localStorage.getItem("hmi-flow-textvariants") || "{}") || {}; }catch(e){ return {}; } };
+const textPick = name => { const v = readTextPicks()[name]; return Number.isInteger(v) && v < TEXTS[name].length ? v : 0; };
+const shortLabel = (t, all) => {   // drop the words every variant shares at the end ("… Garment"), as HMI-Flow does
+  const words = all.map(x => x.split(" "));
+  let n = 0; while(words.every(w => w.length > n + 1 && w[w.length - 1 - n] === words[0][words[0].length - 1 - n])) n++;
+  return t.split(" ").slice(0, t.split(" ").length - n).join(" ") || t;
+};
+// The swap that puts the picked wording on a screen (the screen data's own text is the first variant)
+const wordingSwap = name => { const t = TEXTS[name]; return t && textPick(name) ? [[t[0], t[textPick(name)]]] : []; };
+function renderWording(){
+  document.getElementById("wording").innerHTML = Object.entries(TEXTS).map(([name, t]) =>
+    `<span class="lbl" title="Wording on the ${name} screen (same choice as HMI-Flow's)">${t[0]} text</span>` +
+    `<div class="vers" role="radiogroup" aria-label="${t[0]} wording" data-name="${name}" style="margin-bottom:4px">` +
+    t.map((x, k) => `<button role="radio" data-v="${k}" aria-checked="${k === textPick(name)}" title="${x}">${shortLabel(x, t)}</button>`).join("") +
+    `</div>`).join("");
+}
+function wordingChanged(){
+  renderWording();
+  if(mode === "flow") devs.forEach(refresh); else browseShow(idx, true);
+}
+document.getElementById("wording").onclick = e => {
+  const b = e.target.closest("button"), g = b && b.closest(".vers"); if(!g) return;
+  const p = readTextPicks(); p[g.dataset.name] = +b.dataset.v;
+  try{ localStorage.setItem("hmi-flow-textvariants", JSON.stringify(p)); }catch(err){}
+  wordingChanged();
+};
+addEventListener("storage", e => { if(e.key === "hmi-flow-textvariants") wordingChanged(); });   // picked in HMI-Flow in another tab
+renderWording();
+
 // ---- Screens, drawn by the embedded DisplaySims (one per device) ----
 // swap: [[regex, text], …] replaces part of the screen's text (live timer, Dock Left, Paused)
 function showOn(d, name, swap = []){
@@ -609,13 +646,13 @@ function setLed(d, l){
 }
 const sel = document.getElementById("screen");
 let screens = [], idx = 0, mode = "flow";               // mode: "flow" (the 2 device user flow) or "browse" (every screen)
-function browseShow(i){
+function browseShow(i, quiet = false){                  // quiet: same screen redrawn (new wording), no sound or LED restart
   if(!screens.length) return;
   idx = (i + screens.length) % screens.length;
   const name = screens[idx]; sel.value = name;
-  playSound(SCREEN_SOUND[name]);
+  if(!quiet) playSound(SCREEN_SOUND[name]);
   const base = name === "Custom Treatment" ? "Start Treatment" : name;   // live-only screen: LED of the screen it derives from
-  for(const d of devs){ showOn(d, name); setLed(d, ledInfo[base] || {off:true}); }
+  for(const d of devs){ showOn(d, name, wordingSwap(name)); if(!quiet) setLed(d, ledInfo[base] || {off:true}); }
 }
 addEventListener("message", e => {
   const d = devs.find(x => e.source === x.frame.contentWindow); if(!d) return;
@@ -658,9 +695,10 @@ const fmt = s => { s = Math.max(0, Math.ceil(s)); return `${String(Math.floor(s/
 function refresh(d){
   const s = d.state;
   let swap = [];
-  if(s === "WAIT" && d.side === "R") swap = [["Right", "Left"]];          // the docked device asks for the other one
+  if(s === "WAIT") swap = [...wordingSwap(SCREEN[s]), ...(d.side === "R" ? [["Right", "Left"]] : [])];   // the docked device asks for the other one
   if(s === "RUN") swap = [["\\d{1,2}:\\d\\d", fmt(session ? session.left : TREAT_S)]];
   if(s === "PAUSED") swap = [["Ready", "Paused"]];
+  if(s === "PLACE") swap = wordingSwap(SCREEN[s]);
   showOn(d, SCREEN[s], swap);
 }
 const ledFor = s => s === "PAUSED" ? {...(ledInfo["Docked into Garment"] || {off:true}), blink: 450} : (ledInfo[SCREEN[s]] || {off:true});
@@ -728,7 +766,8 @@ function setMode(m){
   mode = m;
   document.getElementById("modeFlow").setAttribute("aria-pressed", m === "flow");
   document.getElementById("modeBrowse").setAttribute("aria-pressed", m === "browse");
-  document.getElementById("flowCtl").hidden = m !== "flow";
+  document.getElementById("flowNote").hidden = m !== "flow";
+  document.getElementById("flowSpecs").hidden = m !== "flow";
   document.getElementById("resetRow").hidden = m !== "flow";
   document.getElementById("browseCtl").hidden = m !== "browse";
   for(const d of devs) d.garmentEl.hidden = m !== "flow";
