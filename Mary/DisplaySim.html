@@ -1707,6 +1707,9 @@ if(new URLSearchParams(location.search).has("embed")){
       if(current && current.embedded && current.name === d.name){ current.swap = swap; redraw(); }   // same screen, new text: no reload
       else { const st = hmi.find(s => s.name === d.name); if(st) showState({...st, swap, embedded:true}); }
     }
+    if(d.type === "dsim-set" && (d.textMode === "scroll" || d.textMode === "step") && d.textMode !== textMode){   // Scroll / Step for long text
+      textMode = d.textMode; store("hmi-flow-textmode", textMode); redraw(); renderEditor();
+    }
     if(d.type === "dsim-set" && "caps" in d && $("hcaps").checked !== !!d.caps){   // same as flipping this page's All caps switch
       $("hcaps").checked = !!d.caps; $("hcaps").dispatchEvent(new Event("change"));
     }
