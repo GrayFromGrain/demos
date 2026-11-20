@@ -23,8 +23,22 @@
   .panel{position:fixed;top:16px;width:min(300px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--line);border-radius:14px;
     padding:14px 16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:13px;max-height:calc(100vh - 32px);overflow:auto}
   .panel.hmi{left:16px}
-  .panel.view{right:16px}
-  @media (max-width:680px){ .panel.view{right:auto;left:16px;top:auto;bottom:16px} }   /* narrow: HMI on top, 3D view at the bottom */
+  .topnav{position:fixed;top:16px;left:50%;transform:translateX(-50%);padding:0;display:flex;flex-direction:column;align-items:center;gap:10px;font-size:13px;z-index:2;width:max-content;max-width:calc(100vw - 32px)}
+  .topnav .seg{width:300px;max-width:100%}
+  @media (max-width:1060px){   /* not enough room beside the side panels: nav first, the settings panel below it */
+    .topnav{left:16px;right:72px;transform:none;width:auto}
+    .panel.hmi{top:148px;max-height:calc(100vh - 164px)}
+  }
+  .panel.view{right:16px;top:68px}
+  .fab{position:fixed;top:16px;right:16px;width:44px;height:44px;border-radius:50%;border:1px solid var(--line);background:var(--surface);
+    box-shadow:var(--shadow);display:grid;place-items:center;color:var(--ink);padding:0;z-index:2}
+  .fab:hover{background:var(--surface-2);border-color:var(--line-strong)}
+  .fab[aria-expanded=true]{background:var(--ink);border-color:var(--ink);color:#fff}
+  .fab:focus-visible{outline:2px solid color-mix(in srgb,var(--ink) 40%,transparent);outline-offset:2px}
+  @media (max-width:680px){   /* narrow: HMI on top, 3D view button and its panel at the bottom right */
+    .fab{top:auto;bottom:16px}
+    .panel.view{top:auto;bottom:68px}
+  }
   h2{font-size:14px;font-weight:700;margin:0}
   .row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
   .lbl{font-size:12px;font-weight:600;color:var(--muted)}
@@ -69,12 +83,20 @@
 </head>
 <body>
 <canvas id="stage"></canvas>
-<div class="panel hmi" aria-labelledby="hmiTitle">
+<!-- Main navigation: top center -->
+<nav class="topnav" aria-labelledby="hmiTitle">
   <h2 id="hmiTitle">HMI · 2 device flow</h2>
   <div class="seg">
     <button class="btn" id="modeFlow" aria-pressed="true">Flow demo</button>
     <button class="btn" id="modeBrowse" aria-pressed="false">Browse screens</button>
   </div>
+  <div class="row" id="resetRow">
+    <span class="lbl">Reset</span>
+    <button class="btn" id="resetOut" title="Both devices off, out of the garment">Out of garment</button>
+    <button class="btn" id="resetIn" title="Both devices off, left in the garment from last use">In garment</button>
+  </div>
+</nav>
+<div class="panel hmi" aria-label="Demo settings">
   <div id="flowCtl" style="display:flex;flex-direction:column;gap:10px">
     <div class="row">
       <span class="lbl">Timer</span>
@@ -87,11 +109,6 @@
       <select id="autoOff" aria-label="Auto-off delay after Finished" style="flex:none;width:auto">
         <option value="5">5 s</option><option value="10" selected>10 s</option><option value="30">30 s</option>
       </select>
-    </div>
-    <div class="row">
-      <span class="lbl">Reset</span>
-      <button class="btn" id="resetOut" title="Both devices off, out of the garment">Out of garment</button>
-      <button class="btn" id="resetIn" title="Both devices off, left in the garment from last use">In garment</button>
     </div>
     <p class="note">Click the 3D buttons: ▶ is START. To start with just one device, hold ▶ for about 1 s while it's waiting for the other device.</p>
   </div>
@@ -119,7 +136,11 @@
   <button class="btn" id="restart" title="Go back to the Off screen">↺ Restart</button>
 </div>
 <div class="garment" id="garmentR"><b>Right</b><span class="st"></span><button class="btn" aria-pressed="false">Put in garment</button></div>
-<div class="panel view" aria-labelledby="viewTitle">
+<button class="fab" id="viewBtn" aria-label="3D view controls" aria-expanded="false" aria-controls="viewPanel" title="3D view controls">
+  <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" stroke-linecap="round" aria-hidden="true">
+    <path d="M12 2.8 20 7.4v9.2L12 21.2 4 16.6V7.4z"/><path d="M4 7.4 12 12l8-4.6M12 12v9.2"/></svg>
+</button>
+<div class="panel view" id="viewPanel" aria-labelledby="viewTitle" hidden>
   <h2 id="viewTitle">3D view</h2>
   <div class="row">
     <button class="btn" data-view="angled">Angled</button>
@@ -128,7 +149,7 @@
     <button class="btn" data-view="front">Front</button>
   </div>
   <div class="row">
-    <button class="btn" id="actual" aria-pressed="false" title="Show the model at its real size on this monitor">Actual size</button>
+    <label class="switch" title="Show the model at its real size on this monitor"><input type="checkbox" id="actual"><span class="track"></span>Actual size</label>
     <span class="lbl" id="calc"></span>
   </div>
   <div id="calib" hidden style="display:flex;flex-direction:column;gap:8px">
@@ -708,6 +729,7 @@ function setMode(m){
   document.getElementById("modeFlow").setAttribute("aria-pressed", m === "flow");
   document.getElementById("modeBrowse").setAttribute("aria-pressed", m === "browse");
   document.getElementById("flowCtl").hidden = m !== "flow";
+  document.getElementById("resetRow").hidden = m !== "flow";
   document.getElementById("browseCtl").hidden = m !== "browse";
   for(const d of devs) d.garmentEl.hidden = m !== "flow";
   // Browse shows one device, centered; the flow demo shows the pair
@@ -793,16 +815,24 @@ const VIEWS = {
   buttons: {pos:[-150, DIM.H + 90, -360], tgt:[0, DIM.H*0.5, 0]},
   front:   {pos:[0, DIM.H/2, 430], tgt:[0, DIM.H/2, 11]},      // target on the front face, so it measures true
 };
-let fly = null, curView = "angled", flowView = "angled";
+let fly = null, curView = "top", flowView = "top";
+function markView(name){ document.querySelectorAll("[data-view]").forEach(b => b.setAttribute("aria-pressed", b.dataset.view === name)); }
 function setView(name, instant){
-  curView = name;
+  curView = name; markView(name);
   const v = (mode === "browse" ? VIEWS1 : VIEWS)[name], to = {pos:new THREE.Vector3(...v.pos), tgt:new THREE.Vector3(...v.tgt)};
   if(actual) to.pos.sub(to.tgt).setLength(eyeMm()).add(to.tgt);   // actual size: the camera sits at your eye distance
   if(instant){ cam.position.copy(to.pos); controls.target.copy(to.tgt); controls.update(); return; }
   fly = {from:{pos:cam.position.clone(), tgt:controls.target.clone()}, to, t0:performance.now()};
 }
 document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
-setView("angled", true);
+setView("top", true);
+// The 3D view panel opens from its round button; a click elsewhere on the page (not the 3D canvas) or Esc closes it
+const viewBtn = document.getElementById("viewBtn"), viewPanel = document.getElementById("viewPanel");
+const openView = on => { viewPanel.hidden = !on; viewBtn.setAttribute("aria-expanded", on); };
+viewBtn.onclick = () => openView(viewPanel.hidden);
+addEventListener("pointerdown", e => { if(!viewPanel.hidden && !viewPanel.contains(e.target) && !viewBtn.contains(e.target) && e.target !== canvas) openView(false); });
+addEventListener("keydown", e => { if(e.key === "Escape" && !viewPanel.hidden){ openView(false); viewBtn.focus(); } });
+controls.addEventListener("start", () => markView(null));   // orbiting by hand leaves the preset
 
 // ---- Monitor scale (same math and saved settings as DisplaySim.html) ----
 // macOS "Looks like" scaling: the screen is screen.width CSS px wide across `native` physical px, so
@@ -837,10 +867,10 @@ function setActual(on){
   else { controls.minDistance = 40; controls.maxDistance = 900; off.setLength(Math.min(900, Math.max(40, off.length()))); }
   camera.position.copy(controls.target).add(off); camera.near = on ? Math.max(1, d - 250) : 1; camera.far = on ? d + 400 : 2000;   // a tight depth range keeps thin layers apart
   controls.enableZoom = !on;
-  $("actual").setAttribute("aria-pressed", on); $("calib").hidden = !on; $("scalebar").hidden = !on;
+  $("actual").checked = on; $("calib").hidden = !on; $("scalebar").hidden = !on;
   store("enc3d-actual", on ? "1" : "0"); resize(); controls.update();
 }
-$("actual").onclick = () => setActual(!actual);
+$("actual").onchange = () => setActual($("actual").checked);
 
 function resize(){
   const w = innerWidth, h = innerHeight, k = cssPxPerMm();
