@@ -554,7 +554,7 @@ const SOUNDS = {
 };
 // Which sound each screen plays as it appears (HMI-Flow.html's `sound` per state)
 const SCREEN_SOUND = {"Turn On":"on", "Waiting for Device":"dock", "Docked into Garment":"dock", "Start Treatment":"start",
-  "Custom Treatment":"start", "Treatment Finished":"done", "Battery Low":"low", "Charger Connected":"plug"};
+  "Treatment Finished":"done", "Battery Low":"low", "Charger Connected":"plug"};
 const readPicks = () => { try{ return JSON.parse(localStorage.getItem("hmi-flow-versions") || "{}") || {}; }catch(e){ return {}; } };
 const pickVersion = id => { const v = readPicks()[id]; return Number.isInteger(v) && v < SOUNDS[id].versions.length ? v : 0; };
 const soundBox = document.getElementById("sound");
@@ -906,7 +906,7 @@ function refreshTiles(leds = false){
 function setEnclosure(){
   const on = enclBox.checked;
   // (no contact shadows here: on the flat top view they run into the neighbouring tiles)
-  for(const t of tiles) t.group.traverse(o => { if(o.isMesh && o.name !== "halo") o.visible = o.name !== "shadow" && (on || ["display", "panel", "led"].includes(o.name)); });
+  for(const t of tiles) t.group.traverse(o => { if(o.isMesh && o.name !== "halo") o.visible = o.name !== "shadow" && (on || ["display", "led"].includes(o.name)); });   // off: just the lit area and the LED, no glass frame
   layoutTiles();
 }
 enclBox.onchange = setEnclosure;
@@ -914,8 +914,8 @@ enclBox.onchange = setEnclosure;
 function layoutTiles(){
   if(!tiles.length) return;
   const on = enclBox.checked, n = tiles.length;
-  const cell = on ? {w: DIM.L + 24, d: DIM.D + 30} : {w: GLASS.w + 22, d: GLASS.h + 22};
-  const cx = on ? 0 : (DIM.led.x - DIM.led.size/2 + DIM.display.x + GLASS.w/2)/2;   // content center: the LED to the glass's right edge
+  const cell = on ? {w: DIM.L + 24, d: DIM.D + 30} : {w: AA.w + 30, d: AA.h + 26};
+  const cx = on ? 0 : (DIM.led.x - DIM.led.size/2 + DIM.display.x + AA.w/2)/2;      // content center: the LED to the display's right edge
   const nav = document.querySelector(".topnav").getBoundingClientRect(), panel = document.querySelector(".panel.hmi").getBoundingClientRect();
   const wide = innerWidth > 1060;
   const r = {x0: wide ? panel.right + 16 : 16, y0: nav.bottom + 16, x1: innerWidth - 16, y1: innerHeight - 16};
@@ -974,8 +974,8 @@ function tickTiles(now){
   }
   const on = enclBox.checked;
   for(const t of tiles){
-    const p = t.group.position, cx = on ? 0 : (DIM.led.x - DIM.led.size/2 + DIM.display.x + GLASS.w/2)/2;
-    lp.set(p.x + cx, panelY, p.z + (on ? DIM.D/2 : DIM.display.glassZ + GLASS.h/2)).project(ortho);
+    const p = t.group.position, cx = on ? 0 : (DIM.led.x - DIM.led.size/2 + DIM.display.x + AA.w/2)/2;
+    lp.set(p.x + cx, panelY, p.z + (on ? DIM.D/2 : DIM.display.z + AA.h/2)).project(ortho);
     const x = (lp.x + 1)/2*innerWidth, y = (1 - lp.y)/2*innerHeight + 8, el = t.labelEl;
     el.style.transform = `translate(${x - el.offsetWidth/2}px, ${y}px)`;
   }
