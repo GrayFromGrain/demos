@@ -228,7 +228,8 @@
       <div class="row"><span class="lbl">Preview</span><span class="lbl" id="pfPreviewLbl" hidden></span><input type="text" id="pfSample" value="Ready 59:59" aria-label="Preview text"></div>
       <div class="pfpreview"><canvas id="pfPreview"></canvas></div>
       <div class="row">
-        <button class="btn" id="pfReset" title="Replace this browser's copy of the font and icons with pixel-font.js">Reset to pixel-font.js…</button>
+        <button class="btn" id="pfLoadFont" title="Replace the glyphs (and letter spacing) with pixel-font.js as it is in this folder now">Load font from pixel-font.js…</button>
+        <button class="btn" id="pfLoadIcons" title="Replace the icons with pixel-font.js as it is in this folder now (the same icons as hmi-icons/)">Load icons from pixel-font.js…</button>
         <button class="btn" id="pfRegen">Regenerate from Plus Jakarta Sans…</button>
         <label class="switch" title="Draw letters 13% narrower than Plus Jakarta Sans, so they look right on the panel's wide pixels"><input type="checkbox" id="pfNarrow" checked><span class="track"></span>Narrow for wide pixels</label>
       </div>
@@ -1413,14 +1414,37 @@ $("pfRegen").onclick = async () => {
   pf = gen; pfBase = {...clone(gen), icons: pfBase.icons}; pfUndo.length = 0;
   store(PF_BASE_KEY, JSON.stringify(pfBase)); pfVer++; pfGlyphCache.clear(); pfSave(); pfRenderAll(); redraw(); syncSizes();
 };
-$("pfReset").onclick = () => {
-  const file = window.PIXEL_FONT && window.PIXEL_FONT.sizes ? pfPrune(clone(window.PIXEL_FONT)) : null;
-  const fileSp = file ? pfUnbake(file) : null;
-  if(!file){ alert("pixel-font.js has no saved font yet. Use Download pixel-font.js and put the file next to this page."); return; }
-  if(!confirm("Replace this browser's font and icons with pixel-font.js? Edits that aren't in the file will be lost.")) return;
-  pf = file; pfBase = clone(file); pfUndo.length = 0; pfEnsureIcons(); pfSetSpacing(fileSp);
-  store(PF_BASE_KEY, JSON.stringify(pfBase)); pfVer++; pfGlyphCache.clear(); pfSave(); pfRenderAll(); redraw(); syncSizes();
-};
+// Load from the folder: pixel-font.js as it is on disk right now, read fresh on each click (not the copy this page
+// loaded at startup, not this browser's saved edits). A script tag with a fresh URL works for http and file:// alike.
+function pfReadFile(){
+  return new Promise((res, rej) => {
+    const s = document.createElement("script"); s.src = "pixel-font.js?v=" + Date.now();
+    s.onload = () => { s.remove(); const f = window.PIXEL_FONT && window.PIXEL_FONT.sizes ? pfPrune(clone(window.PIXEL_FONT)) : null; f ? res(f) : rej(new Error("no font in pixel-font.js")); };
+    s.onerror = () => { s.remove(); rej(new Error("pixel-font.js not found")); };
+    document.head.appendChild(s);
+  });
+}
+async function pfLoadFromFile(what){                    // what: "font" (glyphs + letter spacing) or "icons"
+  if(!pf) return;
+  let file;
+  try{ file = await pfReadFile(); }catch(e){ alert("Couldn't read pixel-font.js. Keep it in the same folder as this page."); return; }
+  const fileSp = pfUnbake(file);                        // glyphs as drawn; the spacing goes to the Letter spacing setting
+  if(what === "font"){
+    if(!confirm("Replace the font with pixel-font.js from this folder? Glyph edits that aren't in the file will be lost. Icons stay as they are.")) return;
+    pf.sizes = file.sizes; pfBase.sizes = clone(file.sizes); pfSetSpacing(fileSp);
+  } else {
+    if(!file.icons){ alert("pixel-font.js has no icons."); return; }
+    if(!confirm("Replace the icons with pixel-font.js from this folder? Icon edits that aren't in the file will be lost. The font stays as it is.")) return;
+    pf.icons = file.icons; pfBase.icons = clone(file.icons); pfEnsureIcons();
+  }
+  pfUndo.length = 0; store(PF_BASE_KEY, JSON.stringify(pfBase));
+  pfVer++; pfGlyphCache.clear(); pfSave(); pfRenderAll(); redraw(); syncSizes();
+  $("pfNote").textContent = what === "font"
+    ? `Loaded the font from pixel-font.js${fileSp === null ? " (the file records no letter spacing; the setting is unchanged)" : `, letter spacing ${fileSp}`}.`
+    : `Loaded ${Object.keys(file.icons).length} icons from pixel-font.js.`;
+}
+$("pfLoadFont").onclick = () => pfLoadFromFile("font");
+$("pfLoadIcons").onclick = () => pfLoadFromFile("icons");
 function download(name, text, type = "text/plain"){
   const a = document.createElement("a"); a.download = name; a.href = URL.createObjectURL(new Blob([text], {type})); a.click();
   setTimeout(() => URL.revokeObjectURL(a.href), 1000);
