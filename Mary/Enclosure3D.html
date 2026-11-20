@@ -44,6 +44,15 @@
   .btn[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff}
   input[type=number]{height:32px;width:72px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:0 8px;font:inherit;font-size:13px}
   input[type=range]{accent-color:var(--ink);flex:1;min-width:80px}
+  .seg{display:flex;gap:4px}
+  .seg .btn{flex:1}
+  .note{font-size:12px;color:var(--muted);margin:0;line-height:1.45}
+  .devled{display:grid;grid-template-columns:auto 1fr;gap:2px 10px;align-items:center}
+  .devled b{font-size:12px;font-weight:700}
+  .garment{position:fixed;left:0;top:0;transform:translate(-50%,0);background:var(--surface);border:1px solid var(--line);border-radius:12px;
+    padding:8px 10px;box-shadow:var(--shadow);display:flex;flex-direction:column;align-items:center;gap:6px;font-size:12px;white-space:nowrap;z-index:1}
+  .garment b{font-size:13px}
+  .garment .st{color:var(--muted);font-size:11.5px;margin-top:-4px}
   .scalebar{position:fixed;right:24px;bottom:24px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;font-weight:600;color:var(--muted);pointer-events:none}
   .scalebar i{display:block;height:6px;border:1.5px solid var(--ink);border-top:none}
 </style>
@@ -51,16 +60,45 @@
 <body>
 <canvas id="stage"></canvas>
 <div class="panel hmi" aria-labelledby="hmiTitle">
-  <h2 id="hmiTitle">HMI</h2>
-  <div class="row">
+  <h2 id="hmiTitle">HMI · 2 device flow</h2>
+  <div class="seg">
+    <button class="btn" id="modeFlow" aria-pressed="true">Flow demo</button>
+    <button class="btn" id="modeBrowse" aria-pressed="false">Browse screens</button>
+  </div>
+  <div id="flowCtl" style="display:flex;flex-direction:column;gap:10px">
+    <div class="row">
+      <span class="lbl">Timer</span>
+      <select id="speed" aria-label="Treatment timer speed" style="flex:none;width:auto">
+        <option value="1">1× real time</option><option value="10">10×</option><option value="60" selected>60× (1 min ≈ 1 s)</option><option value="600">600×</option>
+      </select>
+    </div>
+    <div class="row">
+      <span class="lbl" title="Treatment Complete turns the device off after this long">Auto-off</span>
+      <select id="autoOff" aria-label="Auto-off delay after Finished" style="flex:none;width:auto">
+        <option value="5">5 s</option><option value="10" selected>10 s</option><option value="30">30 s</option>
+      </select>
+    </div>
+    <div class="row">
+      <span class="lbl">Reset</span>
+      <button class="btn" id="resetOut" title="Both devices off, out of the garment">Out of garment</button>
+      <button class="btn" id="resetIn" title="Both devices off, left in the garment from last use">In garment</button>
+    </div>
+    <p class="note">Click the 3D buttons: ▶ is START. To start with just one device, hold ▶ for about 1 s while it's waiting for the other device.</p>
+  </div>
+  <div id="browseCtl" class="row" hidden>
     <button class="btn" id="prev" aria-label="Previous screen">‹</button>
     <select id="screen" aria-label="HMI screen"></select>
     <button class="btn" id="next" aria-label="Next screen">›</button>
   </div>
   <div class="row"><label class="switch" title="Show the screen text in capitals (same setting as DisplaySim's All caps)"><input type="checkbox" id="caps"><span class="track"></span>All caps</label></div>
-  <div class="led"><i id="ledSwatch"></i><span id="ledText">LED off</span></div>
+  <div class="devled">
+    <b>Left</b><div class="led"><i id="ledSwatchL"></i><span id="ledTextL">LED off</span></div>
+    <b>Right</b><div class="led"><i id="ledSwatchR"></i><span id="ledTextR">LED off</span></div>
+  </div>
   <p class="err" id="err" hidden></p>
 </div>
+<div class="garment" id="garmentL"><b>Left</b><span class="st"></span><button class="btn" aria-pressed="false">Put in garment</button></div>
+<div class="garment" id="garmentR"><b>Right</b><span class="st"></span><button class="btn" aria-pressed="false">Put in garment</button></div>
 <div class="panel view" aria-labelledby="viewTitle">
   <h2 id="viewTitle">3D view</h2>
   <div class="row">
@@ -89,9 +127,11 @@
   </div>
 </div>
 <div class="scalebar" id="scalebar" hidden><i id="scaleLine"></i><span>50 mm</span></div>
-<!-- DisplaySim draws the screens (same font, icons and settings as that page) and sends each frame here -->
-<iframe id="dsim" src="DisplaySim.html?embed" title="Display renderer" aria-hidden="true" tabindex="-1"
+<!-- DisplaySim draws the screens (same font, icons and settings as that page) and sends each frame here: one per device -->
+<iframe id="dsimL" src="DisplaySim.html?embed" title="Left display renderer" aria-hidden="true" tabindex="-1"
   style="position:fixed;left:0;bottom:0;width:4px;height:4px;border:0;opacity:0.01;pointer-events:none"></iframe>
+<iframe id="dsimR" src="DisplaySim.html?embed" title="Right display renderer" aria-hidden="true" tabindex="-1"
+  style="position:fixed;left:4px;bottom:0;width:4px;height:4px;border:0;opacity:0.01;pointer-events:none"></iframe>
 <script src="hmi-screens.js"></script>
 
 <script type="importmap">
@@ -144,19 +184,20 @@ scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnviron
 const camera = new THREE.PerspectiveCamera(30, 1, 1, 2000);
 let cam = camera, actual = false;   // actual: real-size view on (see setActual)
 const controls = new OrbitControls(camera, canvas);
-controls.enableDamping = true; controls.minDistance = 40; controls.maxDistance = 600;
+controls.enableDamping = true; controls.minDistance = 40; controls.maxDistance = 900;
 const key = new THREE.DirectionalLight("#ffffff", 1.4); key.position.set(60, 160, 120); scene.add(key);
 const fill = new THREE.DirectionalLight("#ffffff", 2.2); fill.position.set(-80, 120, -160); scene.add(fill);
 scene.add(new THREE.HemisphereLight("#ffffff", "#c9c9c4", 0.6));
 
-// Contact shadow under the device
+// Contact shadow under the device (added to the device group below, so each device gets one)
+let shadowMesh;
 {
   const c = document.createElement("canvas"); c.width = c.height = 256;
   const x = c.getContext("2d"), g = x.createRadialGradient(128,128,10,128,128,128);
   g.addColorStop(0, "rgba(0,0,0,0.35)"); g.addColorStop(1, "rgba(0,0,0,0)");
   x.fillStyle = g; x.fillRect(0,0,256,256);
   const m = new THREE.Mesh(new THREE.PlaneGeometry(DIM.L*1.9, DIM.D*3.2), new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c), transparent:true, depthWrite:false}));
-  m.rotation.x = -Math.PI/2; m.position.y = 0.05; scene.add(m);
+  m.rotation.x = -Math.PI/2; m.position.y = 0.05; shadowMesh = m;
 }
 
 // ---- Shapes (in the XY plane; extruded along +z, then turned so +z points up: shape y → world −z) ----
@@ -214,7 +255,8 @@ const solid = ({inset = 0, h, y0, bevel = 0, segs = 4, holes = []}) =>
 const plastic = new THREE.MeshStandardMaterial({color:"#4b4c50", roughness:0.62, metalness:0});
 const plasticBack = plastic.clone(); plasticBack.side = THREE.BackSide;   // faces seen from below
 const core = new THREE.MeshStandardMaterial({color:"#1c1c1f", roughness:0.8});
-const device = new THREE.Group(); scene.add(device);
+// The left device is built here; the right one is a clone of it (see "Two devices" below)
+const device = new THREE.Group(); scene.add(device); device.add(shadowMesh);
 
 // Housing (C-0505): one smooth skin lofted through inset copies of the outline, rounded at the bottom and top edges
 function housing(){
@@ -263,22 +305,20 @@ const dctx = dcan.getContext("2d");
 const dtex = new THREE.CanvasTexture(dcan); dtex.colorSpace = THREE.SRGBColorSpace; dtex.anisotropy = 8;
 {
   const m = new THREE.Mesh(new THREE.PlaneGeometry(AA.w, AA.h), new THREE.MeshBasicMaterial({map:dtex, toneMapped:false, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-4}));
-  m.rotation.x = -Math.PI/2; m.position.set(DIM.display.x, panelY, DIM.display.z); device.add(m);
+  m.rotation.x = -Math.PI/2; m.position.set(DIM.display.x, panelY, DIM.display.z); m.name = "display"; device.add(m);
 }
-let fb = new Uint8Array(W*H);
-function drawDisplay(){
-  const x = dctx, k = TEX_K;
+function drawDisplay(d){                                     // d: a device (its canvas, texture and framebuffer)
+  const x = d.dctx, k = TEX_K, fb = d.fb;
   x.setTransform(1,0,0,1,0,0); x.filter = "none"; x.globalAlpha = 1;
-  x.fillStyle = "#08080a"; x.fillRect(0, 0, dcan.width, dcan.height);
+  x.fillStyle = "#08080a"; x.fillRect(0, 0, d.dcan.width, d.dcan.height);
   x.setTransform(k, 0, 0, k, 0, 0);
   const dots = new Path2D();
   for(let r = 0; r < H; r++) for(let q = 0; q < W; q++) if(fb[r*W + q]) dots.rect(q*PITCH.x, r*PITCH.y, DOT.x, DOT.y);
   const col = "rgb(244,247,255)";
   x.save(); x.filter = `blur(${0.12*k}px)`; x.globalAlpha = 0.55; x.fillStyle = col; x.fill(dots); x.restore();
   x.fillStyle = col; x.fill(dots);
-  dtex.needsUpdate = true;
+  d.dtex.needsUpdate = true;
 }
-drawDisplay();
 
 // ---- Icon decals ----
 function decal(w, h, draw, px = 24){
@@ -289,12 +329,9 @@ function decal(w, h, draw, px = 24){
 }
 const ink = x => { x.strokeStyle = x.fillStyle = "#c9cacd"; x.lineWidth = 0.32; x.lineCap = x.lineJoin = "round"; };
 
-// ---- Buttons (clickable) ----
-const clickables = [];
-function makeButton(mesh, axis, depth = 0.5){
-  const g = new THREE.Group(); g.add(mesh); device.add(g);
-  g.userData = {axis, depth, home: g.position.clone(), t: -1};
-  clickables.push(g); return g;
+// ---- Buttons (clickable; named btn-<key>, wired up per device below) ----
+function makeButton(mesh, name){
+  const g = new THREE.Group(); g.add(mesh); g.name = "btn-" + name; device.add(g); return g;
 }
 
 // Play button: a pill standing a little above the cover's surface, triangle outline pointing +x
@@ -304,7 +341,7 @@ function makeButton(mesh, axis, depth = 0.5){
   m.position.set(P.x, 0, P.z);
   const icon = decal(5, 5, (x) => { ink(x); x.lineWidth = 0.38; x.beginPath(); x.moveTo(1.6, 1.2); x.lineTo(3.9, 2.5); x.lineTo(1.6, 3.8); x.closePath(); x.stroke(); });
   icon.rotation.x = -Math.PI/2; icon.position.set(P.x, top + 0.01, P.z);
-  const g = makeButton(m, new THREE.Vector3(0, -1, 0)); g.add(icon);
+  const g = makeButton(m, "play"); g.add(icon);
 }
 
 // Side buttons on the button side, where it curves into the +x end: each face is bent to the housing's curve.
@@ -338,7 +375,7 @@ const conform = geo => {                                     // push a +z-facing
   return geo;
 };
 const gapMat = new THREE.MeshStandardMaterial({color:"#1c1c1f", roughness:0.8, polygonOffset:true, polygonOffsetFactor:-4, polygonOffsetUnits:-4});
-function sideButton(spec, radii, drawIcon){
+function sideButton(name, spec, radii, drawIcon){
   const {w} = B, {h} = spec;
   const s = roundRect(new THREE.Shape(), 0, 0, w - 0.8, h - 0.8, radii.map(r => Math.max(0.01, r - 0.4)));
   const geo = new THREE.ExtrudeGeometry(s, {depth: 1.2, bevelEnabled:true, bevelThickness:0.4, bevelSize:0.4, bevelSegments:3, curveSegments:24});
@@ -350,21 +387,19 @@ function sideButton(spec, radii, drawIcon){
   const m = new THREE.Mesh(conform(geo), plastic); m.position.z = B.out;
   const icon = decal(w, h, (x, ww, hh) => { ink(x); drawIcon(x, ww/2, hh/2); });
   icon.position.z = B.out + 0.03;
-  const g = new THREE.Group(); g.add(m, icon); holder.add(g);
-  g.userData = {axis: new THREE.Vector3(0, 0, -1), depth: 0.5, home: g.position.clone(), t: -1};
-  clickables.push(g); return g;
+  const g = new THREE.Group(); g.add(m, icon); g.name = "btn-" + name; holder.add(g); return g;
 }
 const bw = B.w/2;
-sideButton(B.power, [bw, bw, bw, bw], (x, cx, cy) => {
+sideButton("power", B.power, [bw, bw, bw, bw], (x, cx, cy) => {
   x.beginPath(); x.arc(cx, cy + 0.15, 1.35, -Math.PI/2 + 0.75, -Math.PI/2 - 0.75 + Math.PI*2); x.stroke();
   x.beginPath(); x.moveTo(cx, cy - 1.6); x.lineTo(cx, cy - 0.1); x.stroke();
 });
-sideButton(B.bt, [bw, bw, 0.6, 0.6], (x, cx, cy) => {
+sideButton("bt", B.bt,[bw, bw, 0.6, 0.6], (x, cx, cy) => {
   const a = 1.5, b = 0.75;
   x.beginPath(); x.moveTo(cx - b, cy - a/2); x.lineTo(cx + b, cy + a/2); x.lineTo(cx, cy + a); x.lineTo(cx, cy - a);
   x.lineTo(cx + b, cy - a/2); x.lineTo(cx - b, cy + a/2); x.stroke();
 });
-sideButton(B.level, [0.6, 0.6, bw, bw], (x, cx, cy) => {
+sideButton("level", B.level,[0.6, 0.6, bw, bw], (x, cx, cy) => {
   [-0.7, 0, 0.7].forEach(dx => { x.beginPath(); x.moveTo(cx + dx, cy + 0.8); x.lineTo(cx + dx, cy - 0.8); x.stroke(); });   // three even bars
 });
 
@@ -372,14 +407,14 @@ sideButton(B.level, [0.6, 0.6, bw, bw], (x, cx, cy) => {
 const ledMat = new THREE.MeshBasicMaterial({color:"#2a2a2d", toneMapped:false});
 {
   const s = DIM.led.size, led = new THREE.Mesh(new THREE.PlaneGeometry(s, s), ledMat);
-  led.rotation.x = -Math.PI/2; led.position.set(DIM.led.x, CV.top + 0.01, DIM.led.z); device.add(led);
+  led.rotation.x = -Math.PI/2; led.position.set(DIM.led.x, CV.top + 0.01, DIM.led.z); led.name = "led"; device.add(led);
 }
 // glow halo
 const haloTex = (() => { const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d");
   const g = x.createRadialGradient(64,64,0,64,64,64); g.addColorStop(0,"rgba(255,255,255,0.9)"); g.addColorStop(0.25,"rgba(255,255,255,0.35)"); g.addColorStop(1,"rgba(255,255,255,0)");
   x.fillStyle = g; x.fillRect(0,0,128,128); return new THREE.CanvasTexture(c); })();
 const halo = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), new THREE.MeshBasicMaterial({map:haloTex, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, toneMapped:false}));
-halo.rotation.x = -Math.PI/2; halo.position.set(DIM.led.x, CV.top + 0.05, DIM.led.z); device.add(halo);
+halo.rotation.x = -Math.PI/2; halo.position.set(DIM.led.x, CV.top + 0.05, DIM.led.z); halo.name = "halo"; device.add(halo);
 
 // LED behavior per screen, from hmi-screens.js: off, steady, blink (ms on / ms off) or a color fade loop.
 // Its color is the LED circle in each screen's exported artwork.
@@ -389,10 +424,10 @@ for(const s of [...(typeof MAIN !== "undefined" ? MAIN : []), ...(typeof BATTERY
   try{ const m = atob(s.img.split(",")[1]).match(/<circle cx="19" cy="57" r="5" fill="([^"]*)"/); color = m && m[1]; }catch(e){}
   ledInfo[s.name] = {off: s.led === "off" || !color, color, blink: s.blink, fade: s.fade};
 }
-let led = {off:true}, ledT0 = 0;
-function ledColorAt(now){
+function ledColorAt(d, now){
+  const led = d.led;
   if(led.off) return null;
-  const t = now - ledT0;
+  const t = now - d.ledT0;
   if(led.blink) return Math.floor(t / led.blink) % 2 ? null : new THREE.Color(led.color);
   if(led.fade){
     const cs = [...led.fade.colors, led.fade.colors[0]], p = (t % led.fade.ms) / led.fade.ms * (cs.length - 1), i = Math.floor(p);
@@ -400,46 +435,202 @@ function ledColorAt(now){
   }
   return new THREE.Color(led.color);
 }
-function describeLed(name, l){
+function describeLed(l){
   return l.off ? "LED off" : l.blink ? `LED blinks ${l.color} · ${l.blink} ms on / off` : l.fade ? `LED fades ${l.fade.colors.join(" → ")}` : `LED steady ${l.color}`;
 }
 
-// ---- Screens, drawn by the embedded DisplaySim ----
-const dsim = document.getElementById("dsim"), sel = document.getElementById("screen");
-let screens = [], idx = 0;
-function show(i){
+// ---- Two devices: the one built above is Left (−x); Right is a clone. Each gets its own display texture, LED
+// material, button wiring and DisplaySim renderer. Seen from the reading side (+z), Left is on the left.
+const OFFX = DIM.L/2 + 9;
+const rightGroup = device.clone(); scene.add(rightGroup);
+device.position.x = -OFFX; rightGroup.position.x = OFFX;
+function instrument(group, side){
+  const d = {side, name: side === "L" ? "Left" : "Right", group, clickables: [], fb: new Uint8Array(W*H),
+    led: {off:true}, ledT0: 0, state: "OFF", t0: 0, inGarment: false, shownKey: null, ready: false,
+    frame: document.getElementById("dsim" + side), garmentEl: document.getElementById("garment" + side)};
+  d.dcan = document.createElement("canvas"); d.dcan.width = dcan.width; d.dcan.height = dcan.height;
+  d.dctx = d.dcan.getContext("2d");
+  d.dtex = new THREE.CanvasTexture(d.dcan); d.dtex.colorSpace = THREE.SRGBColorSpace; d.dtex.anisotropy = 8;
+  d.ledMat = ledMat.clone(); d.haloMat = halo.material.clone();
+  group.traverse(o => {
+    if(o.name === "display"){ o.material = o.material.clone(); o.material.map = d.dtex; }
+    if(o.name === "led") o.material = d.ledMat;
+    if(o.name === "halo"){ o.material = d.haloMat; d.halo = o; }
+    if(o.name.startsWith("btn-")){
+      const key = o.name.slice(4);
+      o.userData = {key, dev: d, axis: key === "play" ? new THREE.Vector3(0, -1, 0) : new THREE.Vector3(0, 0, -1),
+        depth: 0.5, home: o.position.clone(), t: -1, held: false};
+      d.clickables.push(o);
+    }
+  });
+  drawDisplay(d);
+  return d;
+}
+const devs = [instrument(device, "L"), instrument(rightGroup, "R")];
+const clickables = devs.flatMap(d => d.clickables);
+const other = d => devs.find(o => o !== d);
+
+// ---- Screens, drawn by the embedded DisplaySims (one per device) ----
+// swap: [[regex, text], …] replaces part of the screen's text (live timer, Dock Left, Paused)
+function showOn(d, name, swap = []){
+  const key = name + JSON.stringify(swap);
+  if(!d.ready || key === d.shownKey) return;
+  d.shownKey = key;
+  d.frame.contentWindow.postMessage({type:"dsim-show", name, swap}, "*");
+}
+function setLed(d, l){
+  d.led = l; d.ledT0 = performance.now();
+  document.getElementById("ledText" + d.side).textContent = describeLed(l);
+}
+const sel = document.getElementById("screen");
+let screens = [], idx = 0, mode = "flow";               // mode: "flow" (the 2 device user flow) or "browse" (every screen)
+function browseShow(i){
   if(!screens.length) return;
   idx = (i + screens.length) % screens.length;
   const name = screens[idx]; sel.value = name;
-  dsim.contentWindow.postMessage({type:"dsim-show", name}, "*");
   const base = name === "Custom Treatment" ? "Start Treatment" : name;   // live-only screen: LED of the screen it derives from
-  led = ledInfo[base] || {off:true}; ledT0 = performance.now();
-  document.getElementById("ledText").textContent = describeLed(name, led);
+  for(const d of devs){ showOn(d, name); setLed(d, ledInfo[base] || {off:true}); }
 }
 addEventListener("message", e => {
-  if(e.source !== dsim.contentWindow) return;
-  const d = e.data || {};
-  if(d.type === "dsim-ready"){
-    screens = d.screens;
-    document.getElementById("caps").checked = !!d.caps;
-    sel.innerHTML = screens.map(n => `<option>${n.replace(/</g, "&lt;")}</option>`).join("");
-    show(Math.max(0, screens.indexOf("Start Treatment")));
+  const d = devs.find(x => e.source === x.frame.contentWindow); if(!d) return;
+  const m = e.data || {};
+  if(m.type === "dsim-ready" && !d.ready){
+    d.ready = true; d.shownKey = null;
+    if(!screens.length){
+      screens = m.screens;
+      document.getElementById("caps").checked = !!m.caps;
+      sel.innerHTML = screens.map(n => `<option>${n.replace(/</g, "&lt;")}</option>`).join("");
+      idx = Math.max(0, screens.indexOf("Start Treatment")); sel.value = screens[idx];
+    }
+    mode === "flow" ? refresh(d) : browseShow(idx);
   }
-  if(d.type === "dsim-fb" && d.fb && d.fb.length === W*H){ fb = d.fb; drawDisplay(); }
+  if(m.type === "dsim-fb" && m.fb && m.fb.length === W*H){ d.fb = m.fb; drawDisplay(d); }
 });
-const hello = () => { if(!screens.length){ try{ dsim.contentWindow.postMessage({type:"dsim-hello"}, "*"); }catch(e){} } };
-hello(); dsim.addEventListener("load", hello);
-setTimeout(() => { if(!screens.length){ const e = document.getElementById("err"); e.hidden = false;
+for(const d of devs){
+  const hello = () => { if(!d.ready){ try{ d.frame.contentWindow.postMessage({type:"dsim-hello"}, "*"); }catch(e){} } };
+  hello(); d.frame.addEventListener("load", hello);
+}
+setTimeout(() => { if(devs.some(d => !d.ready)){ const e = document.getElementById("err"); e.hidden = false;
   e.textContent = "DisplaySim.html didn't answer. Keep it in the same folder as this page."; } }, 6000);
-sel.onchange = () => show(screens.indexOf(sel.value));
-document.getElementById("caps").onchange = e => dsim.contentWindow.postMessage({type:"dsim-set", caps:e.target.checked}, "*");
-document.getElementById("prev").onclick = () => show(idx - 1);
-document.getElementById("next").onclick = () => show(idx + 1);
-addEventListener("keydown", e => { if(e.target === sel) return; if(e.key === "ArrowRight") show(idx + 1); if(e.key === "ArrowLeft") show(idx - 1); });
+sel.onchange = () => browseShow(screens.indexOf(sel.value));
+document.getElementById("caps").onchange = e => devs.forEach(d => d.frame.contentWindow.postMessage({type:"dsim-set", caps:e.target.checked}, "*"));
+document.getElementById("prev").onclick = () => browseShow(idx - 1);
+document.getElementById("next").onclick = () => browseShow(idx + 1);
+addEventListener("keydown", e => { if(mode !== "browse" || e.target === sel) return; if(e.key === "ArrowRight") browseShow(idx + 1); if(e.key === "ArrowLeft") browseShow(idx - 1); });
 
-// ---- Clicking buttons: press animation, then next screen ----
+// ---- 2 device user flow (bilateral), from the "2 Device User Flow" chart ----
+// States per device. Once a treatment starts the devices share one session (paired, or one device on its own via the
+// single-device override), so pausing, resuming and finishing happen on every device in it.
+const SCREEN = {OFF:"Off", IDLE:"Turn On", PLACE:"Place in Garment", WAIT:"Waiting for Device", READY:"Docked into Garment",
+  RUN:"Start Treatment", PAUSED:"Docked into Garment", DONE:"Treatment Finished"};
+const LABEL = {OFF:"Off", IDLE:"Idle", PLACE:"Place in garment", WAIT:"Waiting for device 2", READY:"Docked",
+  RUN:"Treatment in progress", PAUSED:"Treatment paused", DONE:"Treatment complete"};
+const TREAT_S = 59*60 + 59, DOCK_MS = 1000, LONG_MS = 800;
+let session = null;                                      // {devs, left: seconds remaining}
+const fmt = s => { s = Math.max(0, Math.ceil(s)); return `${String(Math.floor(s/60)).padStart(2, "0")}:${String(s%60).padStart(2, "0")}`; };
+function refresh(d){
+  const s = d.state;
+  let swap = [];
+  if(s === "WAIT" && d.side === "R") swap = [["Right", "Left"]];          // the docked device asks for the other one
+  if(s === "RUN") swap = [["\\d{1,2}:\\d\\d", fmt(session ? session.left : TREAT_S)]];
+  if(s === "PAUSED") swap = [["Ready", "Paused"]];
+  showOn(d, SCREEN[s], swap);
+}
+const ledFor = s => s === "PAUSED" ? {...(ledInfo["Docked into Garment"] || {off:true}), blink: 450} : (ledInfo[SCREEN[s]] || {off:true});
+function setState(d, s){
+  d.state = s; d.t0 = performance.now();
+  setLed(d, ledFor(s)); refresh(d); syncGarment(d);
+}
+// "Are both devices docked?": the other device is on and docked, waiting for this one
+function dockCheck(d){
+  const o = other(d);
+  if(o.inGarment && o.state === "WAIT"){ setState(d, "READY"); setState(o, "READY"); }
+  else setState(d, "WAIT");
+}
+function startSession(list){ session = {devs: list, left: TREAT_S}; list.forEach(x => setState(x, "RUN")); }
+const pauseSession = () => session.devs.forEach(x => setState(x, "PAUSED"));
+// A button press on a device. Anything not on the chart does nothing.
+function press(d, key, long = false){
+  if(mode === "browse"){ browseShow(idx + 1); return; }
+  if(key === "power"){ if(d.state === "OFF" && !d.inGarment) setState(d, "IDLE"); return; }
+  if(key !== "play") return;
+  switch(d.state){
+    case "OFF": d.inGarment ? dockCheck(d) : setState(d, "IDLE"); break;
+    case "IDLE": setState(d, "PLACE"); break;
+    case "WAIT": if(long) startSession([d]); break;        // single-device override: long press
+    case "RUN": pauseSession(); break;
+    case "PAUSED": if(session.devs.every(x => x.inGarment)) session.devs.forEach(x => setState(x, "RUN")); break;
+  }
+}
+function setGarment(d, on){
+  d.inGarment = on;
+  if(on){ if(["OFF", "IDLE", "PLACE"].includes(d.state)) dockCheck(d); }
+  else switch(d.state){
+    case "WAIT": setState(d, "PLACE"); break;
+    case "READY": { setState(d, "PLACE"); const o = other(d); if(o.state === "READY") setState(o, "WAIT"); break; }
+    case "RUN": pauseSession(); break;
+  }
+  syncGarment(d);
+}
+function syncGarment(d){
+  const b = d.garmentEl.querySelector("button");
+  b.textContent = d.inGarment ? "Remove from garment" : "Put in garment";
+  b.setAttribute("aria-pressed", d.inGarment);
+  d.garmentEl.querySelector(".st").textContent = LABEL[d.state] + (d.state === "RUN" || d.state === "PAUSED" ? ` · ${fmt(session.left)}` : "");
+}
+function reset(inGarment){
+  session = null;
+  for(const d of devs){ d.inGarment = inGarment; setState(d, "OFF"); }
+}
+let lastTick = performance.now(), lastTimerPost = 0;
+function tickFlow(now){
+  const dt = (now - lastTick)/1000; lastTick = now;
+  if(mode !== "flow") return;
+  if(devs.every(d => d.state === "READY") && devs.every(d => now - d.t0 >= DOCK_MS)) startSession(devs);   // Docked → 1 s → treatment
+  if(session && session.devs[0].state === "RUN"){
+    session.left -= dt * +document.getElementById("speed").value;
+    if(session.left <= 0){ const list = session.devs; session = null; list.forEach(x => setState(x, "DONE")); }
+    else if(now - lastTimerPost > 66){ lastTimerPost = now; session.devs.forEach(x => { refresh(x); syncGarment(x); }); }
+  }
+  const autoOff = +document.getElementById("autoOff").value * 1000;
+  for(const d of devs) if(d.state === "DONE" && now - d.t0 >= autoOff) setState(d, "OFF");
+}
+function setMode(m){
+  mode = m;
+  document.getElementById("modeFlow").setAttribute("aria-pressed", m === "flow");
+  document.getElementById("modeBrowse").setAttribute("aria-pressed", m === "browse");
+  document.getElementById("flowCtl").hidden = m !== "flow";
+  document.getElementById("browseCtl").hidden = m !== "browse";
+  for(const d of devs) d.garmentEl.hidden = m !== "flow";
+  if(m === "flow") for(const d of devs){ setLed(d, ledFor(d.state)); refresh(d); } else browseShow(idx);
+}
+document.getElementById("modeFlow").onclick = () => setMode("flow");
+document.getElementById("modeBrowse").onclick = () => setMode("browse");
+document.getElementById("resetOut").onclick = () => reset(false);
+document.getElementById("resetIn").onclick = () => reset(true);
+for(const d of devs) d.garmentEl.querySelector("button").onclick = () => setGarment(d, !d.inGarment);
+reset(false);
+
+// Garment controls sit under each device on screen
+const corner = new THREE.Vector3();
+function placeGarment(){
+  for(const d of devs){
+    if(d.garmentEl.hidden) continue;
+    let x0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+    for(const cx of [-1, 1]) for(const cy of [0, 1]) for(const cz of [-1, 1]){
+      corner.set(d.group.position.x + cx*DIM.L/2, cy*DIM.H, cz*DIM.D/2).project(cam);
+      const sx = (corner.x + 1)/2*innerWidth, sy = (1 - corner.y)/2*innerHeight;
+      x0 = Math.min(x0, sx); x1 = Math.max(x1, sx); y1 = Math.max(y1, sy);
+    }
+    const el = d.garmentEl, h = el.offsetHeight, w = el.offsetWidth;
+    const x = Math.min(innerWidth - w/2 - 8, Math.max(w/2 + 8, (x0 + x1)/2)), y = Math.min(innerHeight - h - 8, y1 + 12);
+    el.style.transform = `translate(${x - w/2}px, ${y}px)`;
+  }
+}
+
+// ---- Clicking buttons: the button goes in while held; a click is a press, holding ▶ is a long press ----
 const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
-let down = null;
+let down = null, hold = null;                            // hold: {b, t0, fired} while a button is held
 const hit = e => {
   const r = canvas.getBoundingClientRect();
   ptr.set((e.clientX - r.left)/r.width*2 - 1, -(e.clientY - r.top)/r.height*2 + 1);
@@ -448,20 +639,34 @@ const hit = e => {
   if(!h) return null;
   let o = h.object; while(o && !clickables.includes(o)) o = o.parent; return o;
 };
-canvas.addEventListener("pointerdown", e => { down = {x:e.clientX, y:e.clientY}; });
-canvas.addEventListener("pointerup", e => {
-  if(!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;   // a drag orbits, it doesn't click
+canvas.addEventListener("pointerdown", e => {
+  down = {x:e.clientX, y:e.clientY};
   const b = hit(e); if(!b) return;
-  b.userData.t = performance.now(); show(idx + 1);
+  hold = {b, t0: performance.now(), fired: false}; b.userData.held = true; b.userData.t = -1;
+  controls.enabled = false;                              // holding a button doesn't orbit
+  canvas.setPointerCapture(e.pointerId);
 });
-canvas.addEventListener("pointermove", e => { canvas.style.cursor = hit(e) ? "pointer" : ""; });
+const release = () => {
+  if(!hold) return;
+  const {b, fired} = hold; hold = null; controls.enabled = true;
+  b.userData.held = false; b.userData.t = performance.now() - 0.35*220;   // spring back from fully in
+  if(!fired) press(b.userData.dev, b.userData.key);
+};
+canvas.addEventListener("pointerup", release);
+canvas.addEventListener("pointercancel", () => { if(hold){ hold.fired = true; release(); } });
+canvas.addEventListener("pointermove", e => { if(!hold) canvas.style.cursor = hit(e) ? "pointer" : ""; });
+function tickHold(now){
+  if(!hold || hold.fired || now - hold.t0 < LONG_MS) return;
+  const {dev, key} = hold.b.userData;
+  if(mode === "flow" && key === "play" && dev.state === "WAIT"){ hold.fired = true; press(dev, key, true); }
+}
 
 // ---- Camera presets ----
 const VIEWS = {
-  angled:  {pos:[70, DIM.H + 150, 230], tgt:[0, DIM.H*0.55, 0]},
-  top:     {pos:[0, DIM.H + 170, 0.01], tgt:[0, CV.top, 0]},
-  buttons: {pos:[-110, DIM.H + 60, -250], tgt:[0, DIM.H*0.5, 0]},
-  front:   {pos:[0, DIM.H/2, 300], tgt:[0, DIM.H/2, 11]},      // target on the front face, so it measures true
+  angled:  {pos:[90, DIM.H + 210, 330], tgt:[0, DIM.H*0.55, 0]},     // framed for both devices side by side
+  top:     {pos:[0, DIM.H + 260, 0.01], tgt:[0, CV.top, 0]},
+  buttons: {pos:[-150, DIM.H + 90, -360], tgt:[0, DIM.H*0.5, 0]},
+  front:   {pos:[0, DIM.H/2, 430], tgt:[0, DIM.H/2, 11]},      // target on the front face, so it measures true
 };
 let fly = null;
 function setView(name, instant){
@@ -503,7 +708,7 @@ function setActual(on){
   actual = on;
   const d = eyeMm(), off = camera.position.clone().sub(controls.target);
   if(on){ off.setLength(d); controls.minDistance = controls.maxDistance = d; }
-  else { controls.minDistance = 40; controls.maxDistance = 600; off.setLength(Math.min(600, Math.max(40, off.length()))); }
+  else { controls.minDistance = 40; controls.maxDistance = 900; off.setLength(Math.min(900, Math.max(40, off.length()))); }
   camera.position.copy(controls.target).add(off); camera.near = on ? Math.max(1, d - 250) : 1; camera.far = on ? d + 400 : 2000;   // a tight depth range keeps thin layers apart
   controls.enableZoom = !on;
   $("actual").setAttribute("aria-pressed", on); $("calib").hidden = !on; $("scalebar").hidden = !on;
@@ -530,16 +735,22 @@ renderer.setAnimationLoop(now => {
     if(t === 1) fly = null;
   }
   controls.update();
-  for(const b of clickables){                               // press in, spring back
-    const u = b.userData; if(u.t < 0) continue;
+  tickHold(now); tickFlow(now);
+  for(const b of clickables){                               // press in (held), spring back
+    const u = b.userData;
+    if(u.held){ b.position.copy(u.home).addScaledVector(u.axis, u.depth); continue; }
+    if(u.t < 0) continue;
     const t = (now - u.t)/220, d = t < 0.35 ? t/0.35 : Math.max(0, 1 - (t - 0.35)/0.65);
     b.position.copy(u.home).addScaledVector(u.axis, d*u.depth);
     if(t >= 1){ u.t = -1; b.position.copy(u.home); }
   }
-  const c = ledColorAt(now);
-  document.getElementById("ledSwatch").style.background = c ? "#" + c.getHexString() : "#2a2a2d";
-  if(c){ ledMat.color.copy(c).multiplyScalar(1.2); halo.material.color.copy(c); halo.visible = true; }
-  else { ledMat.color.set("#2a2a2d"); halo.visible = false; }
+  for(const d of devs){
+    const c = ledColorAt(d, now);
+    document.getElementById("ledSwatch" + d.side).style.background = c ? "#" + c.getHexString() : "#2a2a2d";
+    if(c){ d.ledMat.color.copy(c).multiplyScalar(1.2); d.haloMat.color.copy(c); d.halo.visible = true; }
+    else { d.ledMat.color.set("#2a2a2d"); d.halo.visible = false; }
+  }
+  placeGarment();
   renderer.render(scene, cam);
 });
 </script>

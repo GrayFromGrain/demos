@@ -876,7 +876,10 @@ function designItems(st, convert){
   if(st.text) items.push({...LONG, text:st.text, long:true});
   return items.map(it => ({...it, size: convert ? r1(it.size * k) : it.size}));
 }
-const itemsFor = st => edits[st.name] || designItems(st, true);
+// st.swap (embedded pages only): [[regex, replacement], …] applied to the screen's text, e.g. a live timer or Dock Left
+const swapText = (st, items) => !(st.swap && st.swap.length) ? items
+  : items.map(it => it.text ? {...it, text: st.swap.reduce((t, [a, b]) => t.replace(new RegExp(a, "g"), b), it.text)} : it);
+const itemsFor = st => swapText(st, edits[st.name] || designItems(st, true));
 const editable = st => edits[st.name] || (edits[st.name] = designItems(st, true));
 // Compare mode: four displays. Column 1 is the main font (and edits the screen's sizes); columns 2 to 4 have
 // their own font and a size scale. Column sizes follow the main ones, converted to the column font's cap height.
@@ -1697,7 +1700,11 @@ if(new URLSearchParams(location.search).has("embed")){
   addEventListener("message", e => {
     const d = e.data || {};
     if(d.type === "dsim-hello") ready();                 // the parent may start listening after this page loads
-    if(d.type === "dsim-show"){ const st = hmi.find(s => s.name === d.name); if(st) showState(st); }
+    if(d.type === "dsim-show"){
+      const swap = Array.isArray(d.swap) ? d.swap : [];
+      if(current && current.embedded && current.name === d.name){ current.swap = swap; redraw(); }   // same screen, new text: no reload
+      else { const st = hmi.find(s => s.name === d.name); if(st) showState({...st, swap, embedded:true}); }
+    }
     if(d.type === "dsim-set" && "caps" in d && $("hcaps").checked !== !!d.caps){   // same as flipping this page's All caps switch
       $("hcaps").checked = !!d.caps; $("hcaps").dispatchEvent(new Event("change"));
     }
