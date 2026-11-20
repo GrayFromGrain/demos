@@ -1,0 +1,531 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Enclosure 3D</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    color-scheme:light;
+    --bg:#f6f6f4; --surface:#ffffff; --surface-2:#f1f1ee; --ink:#18181b; --muted:#71717a; --faint:#a1a1aa;
+    --line:#e6e6e2; --line-strong:#d6d6d1;
+    --shadow:0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.06);
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  html,body{height:100%}
+  body{margin:0;background:var(--bg);color:var(--ink);font-family:"Plus Jakarta Sans",system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;overflow:hidden}
+  button,select{font:inherit;color:inherit}
+  button{cursor:pointer}
+  #stage{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+  .panel{position:fixed;top:16px;left:16px;width:min(320px,calc(100vw - 32px));background:var(--surface);border:1px solid var(--line);border-radius:14px;
+    padding:14px 16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:10px;font-size:13px}
+  h1{font-size:15px;font-weight:700;margin:0}
+  .row{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .lbl{font-size:12px;font-weight:600;color:var(--muted)}
+  select{height:32px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:0 8px;font-size:13px;flex:1;min-width:0}
+  .btn{height:32px;min-width:32px;padding:0 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:13px;font-weight:600}
+  .btn:hover{border-color:var(--line-strong);background:var(--surface-2)}
+  .led{display:flex;align-items:center;gap:8px;color:var(--muted);font-size:12.5px;font-variant-numeric:tabular-nums}
+  .led i{width:10px;height:10px;border-radius:2px;background:#2a2a2d;flex:none}
+  .err{font-size:12px;color:#b4232a;margin:0}
+  .btn[aria-pressed=true]{background:var(--ink);border-color:var(--ink);color:#fff}
+  input[type=number]{height:32px;width:72px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:0 8px;font:inherit;font-size:13px}
+  input[type=range]{accent-color:var(--ink);flex:1;min-width:80px}
+  .scalebar{position:fixed;right:24px;bottom:24px;display:flex;flex-direction:column;align-items:center;gap:4px;font-size:12px;font-weight:600;color:var(--muted);pointer-events:none}
+  .scalebar i{display:block;height:6px;border:1.5px solid var(--ink);border-top:none}
+</style>
+</head>
+<body>
+<canvas id="stage"></canvas>
+<div class="panel">
+  <h1>Enclosure 3D</h1>
+  <div class="row">
+    <button class="btn" id="prev" aria-label="Previous screen">‹</button>
+    <select id="screen" aria-label="HMI screen"></select>
+    <button class="btn" id="next" aria-label="Next screen">›</button>
+  </div>
+  <div class="led"><i id="ledSwatch"></i><span id="ledText">LED off</span></div>
+  <div class="row"><span class="lbl">View</span>
+    <button class="btn" data-view="angled">Angled</button>
+    <button class="btn" data-view="top">Top</button>
+    <button class="btn" data-view="buttons">Buttons</button>
+    <button class="btn" data-view="front">Front</button>
+  </div>
+  <div class="row">
+    <button class="btn" id="actual" aria-pressed="false" title="Show the model at its real size on this monitor">Actual size</button>
+    <span class="lbl" id="calc"></span>
+  </div>
+  <div id="calib" hidden style="display:flex;flex-direction:column;gap:8px">
+    <div class="row">
+      <select id="mon" aria-label="Monitor">
+        <option value="218" data-native="5120">Apple Studio Display (218 ppi)</option>
+        <option value="254.1" data-native="3024">MacBook Pro 14″ (254 ppi)</option>
+        <option value="254" data-native="3456">MacBook Pro 16″ (254 ppi)</option>
+        <option value="224" data-native="2560">MacBook Air 13″ (224 ppi)</option>
+        <option value="custom">Custom ppi…</option>
+      </select>
+      <input type="number" id="ppi" min="50" max="600" step="0.1" value="218" aria-label="Pixels per inch" hidden>
+    </div>
+    <div class="row"><span class="lbl" title="How far your eyes are from the screen. The view's perspective matches it, so the model looks like it sits just behind the glass.">Eye distance</span><input type="number" id="eye" min="200" max="1500" step="10" value="600" aria-label="Eye to screen distance in mm"><span class="lbl">mm</span></div>
+    <div class="row"><span class="lbl">Fine-tune</span><input type="range" id="fine" min="-10" max="10" step="0.1" value="0" aria-label="Fine-tune scale percent"><span class="lbl" id="fineVal">0%</span></div>
+  </div>
+  <p class="err" id="err" hidden></p>
+</div>
+<div class="scalebar" id="scalebar" hidden><i id="scaleLine"></i><span>50 mm</span></div>
+<!-- DisplaySim draws the screens (same font, icons and settings as that page) and sends each frame here -->
+<iframe id="dsim" src="DisplaySim.html?embed" title="Display renderer" aria-hidden="true" tabindex="-1"
+  style="position:fixed;left:0;bottom:0;width:4px;height:4px;border:0;opacity:0.01;pointer-events:none"></iframe>
+<script src="hmi-screens.js"></script>
+
+<script type="importmap">
+{ "imports": {
+  "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+  "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+} }
+</script>
+<script type="module">
+import * as THREE from "three";
+import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+import { toCreasedNormals } from "three/addons/utils/BufferGeometryUtils.js";
+
+// ---- Dimensions, mm ----
+// Sizes and positions come from "Controller spin 3.step" (C-0505 housing outer shell, C-0507 display cover, the display
+// module, the three side buttons). The outline's shape is traced from the top-view render.
+// x runs along the device (LED end −x, play button +x), z across it (+z is the side you read the display from,
+// −z the side with the power / Bluetooth / level buttons), y up from the bottom.
+const DIM = {
+  L: 58.65, D: 24.5, H: 97.8,                  // housing: length, depth (top view, without button rims), height
+  bow: 2.25,                                   // the body arcs this far toward the button side over its length
+  waist: 0.65,                                 // and is this much narrower per side in the middle
+  bodyBevel: 2.5, topBevel: 0.8,               // rounding at the bottom and top edges of the housing
+  cover: {inset: 0.75, top: 99.48, thk: 5.4, bevel: 0.45,    // display cover: inset from the housing, top height, thickness, edge/window bevel
+    windowPad: 0.25},                          // window = the active area plus this black margin on each side (at its narrowest)
+  // active area center (3.1 mm from the play button, as in the top-view render; its bottom edge 0.5 mm above the
+  // play button's), panel glass center (0.73 mm toward the button side: the wider glass and the flex tail are on
+  // that side, as on the prototype board), panel top height (CAD)
+  display: {x: -3.7, z: 1.4, glassZ: 0.67, top: 98.81},
+  play: {x: 19.7, z: 0.89, w: 7.9, d: 11.2, gap: 0.3, out: 0.5},   // out: how far its top stands above the cover
+  led: {x: -25.2, z: 1.5, size: 1.1},
+  buttons: {x: 19.5, w: 7.5, out: 0.6,         // side buttons: center along x, width, how far they stand proud
+    power: {y: 84.1, h: 13}, bt: {y: 60.1, h: 18}, level: {y: 42.3, h: 17.3}},
+};
+// Winstar WEA012840A panel (same numbers as DisplaySim.html)
+const W = 128, H = 40;
+const PITCH = {x:0.249, y:0.217}, DOT = {x:0.229, y:0.197};
+const AA = {w:31.852, h:8.66}, VA = {w:33.4, h:9.23}, POL = {w:35.74, h:10.77}, GLASS = {w:36.74, h:14};
+
+// ---- Scene ----
+const canvas = document.getElementById("stage");
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.0;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color("#f6f6f4");
+scene.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+const camera = new THREE.PerspectiveCamera(30, 1, 1, 2000);
+let cam = camera, actual = false;   // actual: real-size view on (see setActual)
+const controls = new OrbitControls(camera, canvas);
+controls.enableDamping = true; controls.minDistance = 40; controls.maxDistance = 600;
+const key = new THREE.DirectionalLight("#ffffff", 1.4); key.position.set(60, 160, 120); scene.add(key);
+const fill = new THREE.DirectionalLight("#ffffff", 2.2); fill.position.set(-80, 120, -160); scene.add(fill);
+scene.add(new THREE.HemisphereLight("#ffffff", "#c9c9c4", 0.6));
+
+// Contact shadow under the device
+{
+  const c = document.createElement("canvas"); c.width = c.height = 256;
+  const x = c.getContext("2d"), g = x.createRadialGradient(128,128,10,128,128,128);
+  g.addColorStop(0, "rgba(0,0,0,0.35)"); g.addColorStop(1, "rgba(0,0,0,0)");
+  x.fillStyle = g; x.fillRect(0,0,256,256);
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(DIM.L*1.9, DIM.D*3.2), new THREE.MeshBasicMaterial({map:new THREE.CanvasTexture(c), transparent:true, depthWrite:false}));
+  m.rotation.x = -Math.PI/2; m.position.y = 0.05; scene.add(m);
+}
+
+// ---- Shapes (in the XY plane; extruded along +z, then turned so +z points up: shape y → world −z) ----
+function roundRect(path, cx, cy, w, h, r, seg = 16){       // r: one radius or [tl, tr, br, bl]
+  const [tl, tr, br, bl] = (Array.isArray(r) ? r : [r, r, r, r]).map(v => Math.min(v, w/2, h/2));
+  const x0 = cx - w/2, x1 = cx + w/2, y0 = cy - h/2, y1 = cy + h/2, pts = [];
+  const arc = (ax, ay, rad, a0) => { for(let i = 0; i <= seg; i++){ const a = a0 + Math.PI/2*i/seg; pts.push(new THREE.Vector2(ax + rad*Math.cos(a), ay + rad*Math.sin(a))); } };
+  arc(x1 - br, y0 + br, br, -Math.PI/2); arc(x1 - tr, y1 - tr, tr, 0); arc(x0 + tl, y1 - tl, tl, Math.PI/2); arc(x0 + bl, y0 + bl, bl, Math.PI);
+  // A pill's straight sides have zero length: drop the repeated points there, or the bevel tears
+  const out = pts.filter((p, k) => p.distanceTo(pts[(k + 1) % pts.length]) > 1e-5);
+  return path.setFromPoints(out);
+}
+// The housing outline in plan (x along the device, y toward the button side = world −z), inset evenly by `inset`:
+// a stadium bent along an arc (round ends, button side bowing out, reading side curving in), slightly waisted.
+const END_R = (DIM.D - DIM.bow + DIM.waist)/2;                // end radius; total depth = 2r + bow − waist
+const ARC_A = DIM.L/2 - END_R, ARC_R = ARC_A*ARC_A/(2*DIM.bow) + DIM.bow/2, ARC_PHI = Math.asin(ARC_A/ARC_R);
+const ARC_V0 = (DIM.waist + DIM.bow)/2;                       // centers the outline's depth on z = 0
+function outline(inset = 0, n = 64){
+  const C = f => new THREE.Vector2(ARC_R*Math.sin(f), ARC_V0 - ARC_R + ARC_R*Math.cos(f));
+  const N = f => new THREE.Vector2(Math.sin(f), Math.cos(f));
+  const w = f => END_R - DIM.waist*Math.cos(Math.PI/2*f/ARC_PHI)**2 - inset, rr = END_R - inset;
+  const pts = [], fs = i => -ARC_PHI + 2*ARC_PHI*i/n;
+  for(let i = 0; i <= n; i++){ const f = fs(i); pts.push(C(f).addScaledVector(N(f), w(f))); }        // button side, −x → +x
+  for(let i = 1; i < n/2; i++){ const t = Math.PI/2 - ARC_PHI - Math.PI*i/(n/2), c = C(ARC_PHI); pts.push(new THREE.Vector2(c.x + rr*Math.cos(t), c.y + rr*Math.sin(t))); }
+  for(let i = n; i >= 0; i--){ const f = fs(i); pts.push(C(f).addScaledVector(N(f), -w(f))); }       // reading side, +x → −x
+  for(let i = 1; i < n/2; i++){ const t = -Math.PI/2 + ARC_PHI - Math.PI*i/(n/2), c = C(-ARC_PHI); pts.push(new THREE.Vector2(c.x + rr*Math.cos(t), c.y + rr*Math.sin(t))); }
+  return pts;
+}
+// Where the button side of the housing crosses x, and its outward normal there (plan coordinates)
+function buttonSide(x){
+  const p = outline(0, 256);
+  for(let i = 0; i < p.length; i++){
+    const a = p[i], b = p[(i + 1) % p.length];
+    if((a.x - x)*(b.x - x) > 0 || a.x === b.x) continue;
+    const t = (x - a.x)/(b.x - a.x), pt = a.clone().lerp(b, t);
+    if(pt.y < 0) continue;
+    const n = new THREE.Vector2(b.y - a.y, -(b.x - a.x)).normalize(); if(n.y < 0) n.negate();
+    return {pt, n};
+  }
+}
+function extrude(shape, h, y0, bevel, segs){
+  const g = new THREE.ExtrudeGeometry(shape, {depth: h - 2*bevel, bevelEnabled: bevel > 0, bevelThickness: bevel, bevelSize: bevel, bevelSegments: segs, curveSegments: 32});
+  g.translate(0, 0, bevel); g.rotateX(-Math.PI/2); g.translate(0, y0, 0);
+  return g;
+}
+const addHoles = (s, holes) => { for(const o of holes) s.holes.push(roundRect(new THREE.Path(), o.x, -o.z, o.w, o.d, o.r)); return s; };
+// A rounded-rectangle solid w×d (bevel included), height h, standing on y = y0
+const slab = ({w, d, r, h, y0, bevel = 0, segs = 4, holes = []}) =>
+  extrude(addHoles(roundRect(new THREE.Shape(), 0, 0, w - 2*bevel, d - 2*bevel, Math.max(0.01, r - bevel)), holes), h, y0, bevel, segs);
+// A solid with the housing outline (inset by `inset`, bevel included)
+// (its outline is a polygon, so normals are smoothed across the shallow corners and kept sharp at real edges)
+const solid = ({inset = 0, h, y0, bevel = 0, segs = 4, holes = []}) =>
+  toCreasedNormals(extrude(addHoles(new THREE.Shape(outline(inset + bevel)), holes), h, y0, bevel, segs), Math.PI/5);
+
+const plastic = new THREE.MeshStandardMaterial({color:"#4b4c50", roughness:0.62, metalness:0});
+const plasticBack = plastic.clone(); plasticBack.side = THREE.BackSide;   // faces seen from below
+const core = new THREE.MeshStandardMaterial({color:"#1c1c1f", roughness:0.8});
+const device = new THREE.Group(); scene.add(device);
+
+// Housing (C-0505): one smooth skin lofted through inset copies of the outline, rounded at the bottom and top edges
+function housing(){
+  const Rb = DIM.bodyBevel, Rt = DIM.topBevel, prof = [], K = 8;
+  for(let k = 0; k <= K; k++){ const a = k/K*Math.PI/2; prof.push([Rb*(1 - Math.cos(a)), Rb*(1 - Math.sin(a))]); }
+  for(let k = K; k >= 0; k--){ const a = k/K*Math.PI/2; prof.push([DIM.H - Rt*(1 - Math.cos(a)), Rt*(1 - Math.sin(a))]); }
+  const rings = prof.map(([y, inset]) => ({y, pts: outline(inset, 96)})), M = rings[0].pts.length;
+  const pos = [], idx = [];
+  for(const r of rings) for(const p of r.pts) pos.push(p.x, r.y, -p.y);
+  for(let i = 0; i < rings.length - 1; i++) for(let j = 0; j < M; j++){
+    const a = i*M + j, b = i*M + (j + 1)%M, c = (i + 1)*M + (j + 1)%M, d = (i + 1)*M + j;
+    idx.push(a, d, b, b, d, c);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(pos, 3)); g.setIndex(idx); g.computeVertexNormals();
+  const grp = new THREE.Group(); grp.add(new THREE.Mesh(g, plastic));
+  for(const [r, up] of [[rings[0], false], [rings[rings.length - 1], true]]){      // flat bottom and top faces
+    const cap = new THREE.ShapeGeometry(new THREE.Shape(r.pts)); cap.rotateX(-Math.PI/2); cap.translate(0, r.y, 0);
+    grp.add(new THREE.Mesh(cap, up ? plastic : plasticBack));
+  }
+  return grp;
+}
+device.add(housing());
+
+// Display cover (C-0507), set into the top of the housing, with the window and the play button opening. Its bevel
+// rounds the window's edge: the opening is widest at the top surface and narrowest (active area + pad) one bevel down.
+const CV = DIM.cover, cb = CV.bevel, P = DIM.play;
+const wp = DIM.cover.windowPad, win = {x:DIM.display.x, z:DIM.display.z, w:AA.w + 2*wp + 2*cb, d:AA.h + 2*wp + 2*cb, r:0.3 + cb};
+const playHole = {x:P.x, z:P.z, w:P.w + 2*P.gap + 2*cb, d:P.d + 2*P.gap + 2*cb, r:(P.w + 2*P.gap)/2 + cb};
+device.add(new THREE.Mesh(solid({inset:CV.inset, h:CV.thk, y0:CV.top - CV.thk, bevel:cb, segs:3, holes:[win, playHole]}), plastic));
+
+// ---- Display panel: glass, polarizer, black mask, then the 128×40 active area as a live texture ----
+const panelY = DIM.display.top;
+const layer = (w, h, color, y, z = DIM.display.z) => {
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({color, roughness:0.35}));
+  m.rotation.x = -Math.PI/2; m.position.set(DIM.display.x, y, z); device.add(m); return m;
+};
+// spaced 0.1 mm apart (all hidden under the cover but the active area) so the depth buffer can tell them apart
+layer(GLASS.w, GLASS.h, "#1d1d20", panelY - 0.3, DIM.display.glassZ);
+layer(POL.w, POL.h, "#26262a", panelY - 0.2);
+layer(VA.w, VA.h, "#050506", panelY - 0.1);
+
+const TEX_K = 40;                                           // texture px per mm
+const dcan = document.createElement("canvas"); dcan.width = Math.round(AA.w*TEX_K); dcan.height = Math.round(AA.h*TEX_K);
+const dctx = dcan.getContext("2d");
+const dtex = new THREE.CanvasTexture(dcan); dtex.colorSpace = THREE.SRGBColorSpace; dtex.anisotropy = 8;
+{
+  const m = new THREE.Mesh(new THREE.PlaneGeometry(AA.w, AA.h), new THREE.MeshBasicMaterial({map:dtex, toneMapped:false, polygonOffset:true, polygonOffsetFactor:-1, polygonOffsetUnits:-4}));
+  m.rotation.x = -Math.PI/2; m.position.set(DIM.display.x, panelY, DIM.display.z); device.add(m);
+}
+let fb = new Uint8Array(W*H);
+function drawDisplay(){
+  const x = dctx, k = TEX_K;
+  x.setTransform(1,0,0,1,0,0); x.filter = "none"; x.globalAlpha = 1;
+  x.fillStyle = "#08080a"; x.fillRect(0, 0, dcan.width, dcan.height);
+  x.setTransform(k, 0, 0, k, 0, 0);
+  const dots = new Path2D();
+  for(let r = 0; r < H; r++) for(let q = 0; q < W; q++) if(fb[r*W + q]) dots.rect(q*PITCH.x, r*PITCH.y, DOT.x, DOT.y);
+  const col = "rgb(244,247,255)";
+  x.save(); x.filter = `blur(${0.12*k}px)`; x.globalAlpha = 0.55; x.fillStyle = col; x.fill(dots); x.restore();
+  x.fillStyle = col; x.fill(dots);
+  dtex.needsUpdate = true;
+}
+drawDisplay();
+
+// ---- Icon decals ----
+function decal(w, h, draw, px = 24){
+  const c = document.createElement("canvas"); c.width = Math.round(w*px); c.height = Math.round(h*px);
+  const x = c.getContext("2d"); x.scale(px, px); draw(x, w, h);
+  const t = new THREE.CanvasTexture(c); t.colorSpace = THREE.SRGBColorSpace; t.anisotropy = 8;
+  return new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshStandardMaterial({map:t, transparent:true, roughness:0.6, depthWrite:false, polygonOffset:true, polygonOffsetFactor:-2}));
+}
+const ink = x => { x.strokeStyle = x.fillStyle = "#c9cacd"; x.lineWidth = 0.32; x.lineCap = x.lineJoin = "round"; };
+
+// ---- Buttons (clickable) ----
+const clickables = [];
+function makeButton(mesh, axis, depth = 0.5){
+  const g = new THREE.Group(); g.add(mesh); device.add(g);
+  g.userData = {axis, depth, home: g.position.clone(), t: -1};
+  clickables.push(g); return g;
+}
+
+// Play button: a pill standing a little above the cover's surface, triangle outline pointing +x
+{
+  const btnH = 3, top = CV.top + P.out;
+  const m = new THREE.Mesh(slab({w:P.w, d:P.d, r:P.w/2, h:btnH, y0:top - btnH, bevel:0.6, segs:3}), plastic);
+  m.position.set(P.x, 0, P.z);
+  const icon = decal(5, 5, (x) => { ink(x); x.lineWidth = 0.38; x.beginPath(); x.moveTo(1.6, 1.2); x.lineTo(3.9, 2.5); x.lineTo(1.6, 3.8); x.closePath(); x.stroke(); });
+  icon.rotation.x = -Math.PI/2; icon.position.set(P.x, top + 0.01, P.z);
+  const g = makeButton(m, new THREE.Vector3(0, -1, 0)); g.add(icon);
+}
+
+// Side buttons on the button side, where it curves into the +x end: each face is bent to the housing's curve.
+const B = DIM.buttons, side = buttonSide(B.x);
+const sideN = new THREE.Vector3(side.n.x, 0, -side.n.y), sideAngle = Math.atan2(sideN.x, sideN.z);
+// The housing surface beside the buttons, as an offset along the button normal for each sideways position x
+// (local to the button: +x along the surface, +z outward). Buttons and their gaps are shaped to it point by point.
+const sideT = new THREE.Vector2(side.n.y, -side.n.x);       // tangent in plan, pointing the same way as local +x
+if(sideT.x * Math.cos(sideAngle) + -sideT.y * -Math.sin(sideAngle) < 0) sideT.negate();
+const OUT = outline(0, 96), SURF = [], SURF_X0 = -B.w, SURF_DX = 0.05;
+for(let x = SURF_X0; x <= B.w; x += SURF_DX){                // ray from outside, back along −n: the outermost hit is the surface
+  const o = side.pt.clone().addScaledVector(sideT, x), best = {d: -Infinity};
+  for(let k = 0; k < OUT.length; k++){
+    const a = OUT[k], b = OUT[(k + 1) % OUT.length], e = b.clone().sub(a);
+    const den = side.n.x*e.y - side.n.y*e.x; if(Math.abs(den) < 1e-9) continue;
+    const ao = a.clone().sub(o), d = (ao.x*e.y - ao.y*e.x)/den, s = (ao.x*side.n.y - ao.y*side.n.x)/den;
+    if(s >= 0 && s <= 1 && d > best.d) best.d = d;
+  }
+  SURF.push(best.d);
+}
+const surf = x => { const f = Math.max(0, Math.min(SURF.length - 1.001, (x - SURF_X0)/SURF_DX)), i = Math.floor(f); return SURF[i] + (SURF[i + 1] - SURF[i])*(f - i); };
+const conform = geo => {                                     // push a +z-facing part onto the housing surface
+  geo = toCreasedNormals(geo, Math.PI/6);                    // smooth normals on the rounded edges, sharp where the edges really are
+  const p = geo.attributes.position, n = geo.attributes.normal;
+  for(let i = 0; i < p.count; i++){
+    const x = p.getX(i), slope = (surf(x + 0.05) - surf(x - 0.05))/0.1, c = 1/Math.hypot(1, slope), s = -slope*c;
+    p.setZ(i, p.getZ(i) + surf(x));
+    const nx = n.getX(i), nz = n.getZ(i);                     // turn each normal with the surface, so the face shades as a smooth curve
+    n.setX(i, nx*c + nz*s); n.setZ(i, -nx*s + nz*c);
+  }
+  return geo;
+};
+const gapMat = new THREE.MeshStandardMaterial({color:"#1c1c1f", roughness:0.8, polygonOffset:true, polygonOffsetFactor:-4, polygonOffsetUnits:-4});
+function sideButton(spec, radii, drawIcon){
+  const {w} = B, {h} = spec;
+  const s = roundRect(new THREE.Shape(), 0, 0, w - 0.8, h - 0.8, radii.map(r => Math.max(0.01, r - 0.4)));
+  const geo = new THREE.ExtrudeGeometry(s, {depth: 1.2, bevelEnabled:true, bevelThickness:0.4, bevelSize:0.4, bevelSegments:3, curveSegments:24});
+  geo.translate(0, 0, -1.6);                                 // front face at z = 0
+  const holder = new THREE.Group();                           // sits on the housing surface, +z = outward
+  holder.position.set(side.pt.x, spec.y, -side.pt.y); holder.rotation.y = sideAngle; device.add(holder);
+  const gapGeo = conform(new THREE.ShapeGeometry(roundRect(new THREE.Shape(), 0, 0, w + 0.7, h + 0.7, radii.map(r => r + 0.35)), 24));
+  const gap = new THREE.Mesh(gapGeo, gapMat); holder.add(gap);   // dark gap around the button, drawn over the housing surface
+  const m = new THREE.Mesh(conform(geo), plastic); m.position.z = B.out;
+  const icon = decal(w, h, (x, ww, hh) => { ink(x); drawIcon(x, ww/2, hh/2); });
+  icon.position.z = B.out + 0.03;
+  const g = new THREE.Group(); g.add(m, icon); holder.add(g);
+  g.userData = {axis: new THREE.Vector3(0, 0, -1), depth: 0.5, home: g.position.clone(), t: -1};
+  clickables.push(g); return g;
+}
+const bw = B.w/2;
+sideButton(B.power, [bw, bw, bw, bw], (x, cx, cy) => {
+  x.beginPath(); x.arc(cx, cy + 0.15, 1.35, -Math.PI/2 + 0.75, -Math.PI/2 - 0.75 + Math.PI*2); x.stroke();
+  x.beginPath(); x.moveTo(cx, cy - 1.6); x.lineTo(cx, cy - 0.1); x.stroke();
+});
+sideButton(B.bt, [bw, bw, 0.6, 0.6], (x, cx, cy) => {
+  const a = 1.5, b = 0.75;
+  x.beginPath(); x.moveTo(cx - b, cy - a/2); x.lineTo(cx + b, cy + a/2); x.lineTo(cx, cy + a); x.lineTo(cx, cy - a);
+  x.lineTo(cx + b, cy - a/2); x.lineTo(cx - b, cy + a/2); x.stroke();
+});
+sideButton(B.level, [0.6, 0.6, bw, bw], (x, cx, cy) => {
+  [-0.7, 0, 0.7].forEach(dx => { x.beginPath(); x.moveTo(cx + dx, cy + 0.8); x.lineTo(cx + dx, cy - 0.8); x.stroke(); });   // three even bars
+});
+
+// ---- LED (light pipe flush with the cover) ----
+const ledMat = new THREE.MeshBasicMaterial({color:"#2a2a2d", toneMapped:false});
+{
+  const s = DIM.led.size, led = new THREE.Mesh(new THREE.PlaneGeometry(s, s), ledMat);
+  led.rotation.x = -Math.PI/2; led.position.set(DIM.led.x, CV.top + 0.01, DIM.led.z); device.add(led);
+}
+// glow halo
+const haloTex = (() => { const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d");
+  const g = x.createRadialGradient(64,64,0,64,64,64); g.addColorStop(0,"rgba(255,255,255,0.9)"); g.addColorStop(0.25,"rgba(255,255,255,0.35)"); g.addColorStop(1,"rgba(255,255,255,0)");
+  x.fillStyle = g; x.fillRect(0,0,128,128); return new THREE.CanvasTexture(c); })();
+const halo = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), new THREE.MeshBasicMaterial({map:haloTex, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, toneMapped:false}));
+halo.rotation.x = -Math.PI/2; halo.position.set(DIM.led.x, CV.top + 0.05, DIM.led.z); device.add(halo);
+
+// LED behavior per screen, from hmi-screens.js: off, steady, blink (ms on / ms off) or a color fade loop.
+// Its color is the LED circle in each screen's exported artwork.
+const ledInfo = {};
+for(const s of [...(typeof MAIN !== "undefined" ? MAIN : []), ...(typeof BATTERY !== "undefined" ? BATTERY : [])]){   // top-level consts of hmi-screens.js
+  let color = null;
+  try{ const m = atob(s.img.split(",")[1]).match(/<circle cx="19" cy="57" r="5" fill="([^"]*)"/); color = m && m[1]; }catch(e){}
+  ledInfo[s.name] = {off: s.led === "off" || !color, color, blink: s.blink, fade: s.fade};
+}
+let led = {off:true}, ledT0 = 0;
+function ledColorAt(now){
+  if(led.off) return null;
+  const t = now - ledT0;
+  if(led.blink) return Math.floor(t / led.blink) % 2 ? null : new THREE.Color(led.color);
+  if(led.fade){
+    const cs = [...led.fade.colors, led.fade.colors[0]], p = (t % led.fade.ms) / led.fade.ms * (cs.length - 1), i = Math.floor(p);
+    return new THREE.Color(cs[i]).lerp(new THREE.Color(cs[i + 1]), p - i);
+  }
+  return new THREE.Color(led.color);
+}
+function describeLed(name, l){
+  return l.off ? "LED off" : l.blink ? `LED blinks ${l.color} · ${l.blink} ms on / off` : l.fade ? `LED fades ${l.fade.colors.join(" → ")}` : `LED steady ${l.color}`;
+}
+
+// ---- Screens, drawn by the embedded DisplaySim ----
+const dsim = document.getElementById("dsim"), sel = document.getElementById("screen");
+let screens = [], idx = 0;
+function show(i){
+  if(!screens.length) return;
+  idx = (i + screens.length) % screens.length;
+  const name = screens[idx]; sel.value = name;
+  dsim.contentWindow.postMessage({type:"dsim-show", name}, "*");
+  const base = name === "Custom Treatment" ? "Start Treatment" : name;   // live-only screen: LED of the screen it derives from
+  led = ledInfo[base] || {off:true}; ledT0 = performance.now();
+  document.getElementById("ledText").textContent = describeLed(name, led);
+}
+addEventListener("message", e => {
+  if(e.source !== dsim.contentWindow) return;
+  const d = e.data || {};
+  if(d.type === "dsim-ready"){
+    screens = d.screens;
+    sel.innerHTML = screens.map(n => `<option>${n.replace(/</g, "&lt;")}</option>`).join("");
+    show(Math.max(0, screens.indexOf("Start Treatment")));
+  }
+  if(d.type === "dsim-fb" && d.fb && d.fb.length === W*H){ fb = d.fb; drawDisplay(); }
+});
+const hello = () => { if(!screens.length){ try{ dsim.contentWindow.postMessage({type:"dsim-hello"}, "*"); }catch(e){} } };
+hello(); dsim.addEventListener("load", hello);
+setTimeout(() => { if(!screens.length){ const e = document.getElementById("err"); e.hidden = false;
+  e.textContent = "DisplaySim.html didn't answer. Keep it in the same folder as this page."; } }, 6000);
+sel.onchange = () => show(screens.indexOf(sel.value));
+document.getElementById("prev").onclick = () => show(idx - 1);
+document.getElementById("next").onclick = () => show(idx + 1);
+addEventListener("keydown", e => { if(e.target === sel) return; if(e.key === "ArrowRight") show(idx + 1); if(e.key === "ArrowLeft") show(idx - 1); });
+
+// ---- Clicking buttons: press animation, then next screen ----
+const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
+let down = null;
+const hit = e => {
+  const r = canvas.getBoundingClientRect();
+  ptr.set((e.clientX - r.left)/r.width*2 - 1, -(e.clientY - r.top)/r.height*2 + 1);
+  ray.setFromCamera(ptr, cam);
+  const h = ray.intersectObjects(clickables, true)[0];
+  if(!h) return null;
+  let o = h.object; while(o && !clickables.includes(o)) o = o.parent; return o;
+};
+canvas.addEventListener("pointerdown", e => { down = {x:e.clientX, y:e.clientY}; });
+canvas.addEventListener("pointerup", e => {
+  if(!down || Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4) return;   // a drag orbits, it doesn't click
+  const b = hit(e); if(!b) return;
+  b.userData.t = performance.now(); show(idx + 1);
+});
+canvas.addEventListener("pointermove", e => { canvas.style.cursor = hit(e) ? "pointer" : ""; });
+
+// ---- Camera presets ----
+const VIEWS = {
+  angled:  {pos:[70, DIM.H + 150, 230], tgt:[0, DIM.H*0.55, 0]},
+  top:     {pos:[0, DIM.H + 170, 0.01], tgt:[0, CV.top, 0]},
+  buttons: {pos:[-110, DIM.H + 60, -250], tgt:[0, DIM.H*0.5, 0]},
+  front:   {pos:[0, DIM.H/2, 300], tgt:[0, DIM.H/2, 11]},      // target on the front face, so it measures true
+};
+let fly = null;
+function setView(name, instant){
+  const v = VIEWS[name], to = {pos:new THREE.Vector3(...v.pos), tgt:new THREE.Vector3(...v.tgt)};
+  if(actual) to.pos.sub(to.tgt).setLength(eyeMm()).add(to.tgt);   // actual size: the camera sits at your eye distance
+  if(instant){ cam.position.copy(to.pos); controls.target.copy(to.tgt); controls.update(); return; }
+  fly = {from:{pos:cam.position.clone(), tgt:controls.target.clone()}, to, t0:performance.now()};
+}
+document.querySelectorAll("[data-view]").forEach(b => b.onclick = () => setView(b.dataset.view));
+setView("angled", true);
+
+// ---- Monitor scale (same math and saved settings as DisplaySim.html) ----
+// macOS "Looks like" scaling: the screen is screen.width CSS px wide across `native` physical px, so
+// CSS px per mm = ppi/25.4 × screen.width/native. Custom monitors fall back to devicePixelRatio. Assumes browser zoom 100%.
+const $ = id => document.getElementById(id);
+const store = (k, v) => { try{ v === undefined ? (v = localStorage.getItem(k)) : localStorage.setItem(k, v); }catch(e){ v = null; } return v; };
+function cssPxPerMm(){
+  const o = $("mon").selectedOptions[0], ppi = +$("ppi").value || 218, fine = 1 + (+$("fine").value)/100;
+  const native = +o.dataset.native;
+  return ppi/25.4 * (native ? screen.width/native : 1/(devicePixelRatio || 1)) * fine;
+}
+{
+  const ppi = store("dsim-ppi"), fine = store("dsim-fine");
+  if(ppi){ $("ppi").value = ppi; $("mon").value = [...$("mon").options].some(o => o.value === ppi) ? ppi : "custom"; }
+  if(fine) $("fine").value = fine;
+  $("ppi").hidden = $("mon").value !== "custom";
+}
+const calibrated = () => { $("fineVal").textContent = (+$("fine").value).toFixed(1) + "%"; resize(); };
+const eyeMm = () => Math.max(200, +$("eye").value || 600);
+if(store("enc3d-eye")) $("eye").value = store("enc3d-eye");
+$("eye").oninput = () => { store("enc3d-eye", $("eye").value); if(actual) setActual(true); };
+$("mon").onchange = () => { const v = $("mon").value; $("ppi").hidden = v !== "custom"; if(v !== "custom") $("ppi").value = v; store("dsim-ppi", $("ppi").value); calibrated(); };
+$("ppi").oninput = () => { store("dsim-ppi", $("ppi").value); calibrated(); };
+$("fine").oninput = () => { store("dsim-fine", $("fine").value); calibrated(); };
+
+// Actual size: a perspective camera at your eye's distance from the screen, with a field of view that makes 1 mm at
+// the orbit target 1 mm on the monitor. Perspective then matches what you'd see if the device sat behind the glass.
+function setActual(on){
+  actual = on;
+  const d = eyeMm(), off = camera.position.clone().sub(controls.target);
+  if(on){ off.setLength(d); controls.minDistance = controls.maxDistance = d; }
+  else { controls.minDistance = 40; controls.maxDistance = 600; off.setLength(Math.min(600, Math.max(40, off.length()))); }
+  camera.position.copy(controls.target).add(off); camera.near = on ? Math.max(1, d - 250) : 1; camera.far = on ? d + 400 : 2000;   // a tight depth range keeps thin layers apart
+  controls.enableZoom = !on;
+  $("actual").setAttribute("aria-pressed", on); $("calib").hidden = !on; $("scalebar").hidden = !on;
+  store("enc3d-actual", on ? "1" : "0"); resize(); controls.update();
+}
+$("actual").onclick = () => setActual(!actual);
+
+function resize(){
+  const w = innerWidth, h = innerHeight, k = cssPxPerMm();
+  camera.fov = actual ? THREE.MathUtils.radToDeg(2*Math.atan(h/k/2/eyeMm())) : 30;   // screen height in mm, seen from the eye
+  renderer.setSize(w, h, false); camera.aspect = w/h; camera.updateProjectionMatrix();
+  $("scaleLine").style.width = (50*k) + "px";
+  $("calc").textContent = actual ? `${k.toFixed(2)} CSS px per mm` : "";
+}
+addEventListener("resize", resize); resize();
+matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener("change", resize);
+$("fineVal").textContent = (+$("fine").value).toFixed(1) + "%";
+if(store("enc3d-actual") === "1") setActual(true);
+
+renderer.setAnimationLoop(now => {
+  if(fly){
+    const t = Math.min(1, (now - fly.t0)/700), e = t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2)/2;
+    cam.position.lerpVectors(fly.from.pos, fly.to.pos, e); controls.target.lerpVectors(fly.from.tgt, fly.to.tgt, e);
+    if(t === 1) fly = null;
+  }
+  controls.update();
+  for(const b of clickables){                               // press in, spring back
+    const u = b.userData; if(u.t < 0) continue;
+    const t = (now - u.t)/220, d = t < 0.35 ? t/0.35 : Math.max(0, 1 - (t - 0.35)/0.65);
+    b.position.copy(u.home).addScaledVector(u.axis, d*u.depth);
+    if(t >= 1){ u.t = -1; b.position.copy(u.home); }
+  }
+  const c = ledColorAt(now);
+  document.getElementById("ledSwatch").style.background = c ? "#" + c.getHexString() : "#2a2a2d";
+  if(c){ ledMat.color.copy(c).multiplyScalar(1.2); halo.material.color.copy(c); halo.visible = true; }
+  else { ledMat.color.set("#2a2a2d"); halo.visible = false; }
+  renderer.render(scene, cam);
+});
+</script>
+</body>
+</html>

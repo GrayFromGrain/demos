@@ -1,0 +1,1706 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Display Simulator</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@200..800&display=swap" rel="stylesheet">
+<style>
+  /* Fonts that aren't on Google Fonts, loaded from fonts/ (browsers only fetch a face when it's drawn). */
+  @font-face{ font-family:"WindyCity"; font-weight:500; src:local("WindyCity"), local("WindyCity-Medium"), url("fonts/WindyCity.ttf") format("truetype"); }
+  @font-face{ font-family:"Pixel Operator"; font-weight:400; src:url("fonts/pixel_operator/PixelOperator.ttf") format("truetype"); }
+  @font-face{ font-family:"Pixel Operator"; font-weight:700; src:url("fonts/pixel_operator/PixelOperator-Bold.ttf") format("truetype"); }
+  @font-face{ font-family:"Pixel Operator HB"; font-weight:400; src:url("fonts/pixel_operator/PixelOperatorHB.ttf") format("truetype"); }
+  @font-face{ font-family:"Pixel Operator SC"; font-weight:400; src:url("fonts/pixel_operator/PixelOperatorSC.ttf") format("truetype"); }
+  @font-face{ font-family:"Pixel Operator SC"; font-weight:700; src:url("fonts/pixel_operator/PixelOperatorSC-Bold.ttf") format("truetype"); }
+  @font-face{ font-family:"Pixel Operator HB SC"; font-weight:400; src:url("fonts/pixel_operator/PixelOperatorHBSC.ttf") format("truetype"); }
+  @font-face{ font-family:"Pixel Operator Mono"; font-weight:400; src:url("fonts/pixel_operator/PixelOperatorMono.ttf") format("truetype"); }
+  @font-face{ font-family:"Pixel Operator Mono"; font-weight:700; src:url("fonts/pixel_operator/PixelOperatorMono-Bold.ttf") format("truetype"); }
+  @font-face{ font-family:"Pixel Operator 8"; font-weight:400; src:url("fonts/pixel_operator/PixelOperator8.ttf") format("truetype"); }
+  @font-face{ font-family:"Pixel Operator 8"; font-weight:700; src:url("fonts/pixel_operator/PixelOperator8-Bold.ttf") format("truetype"); }
+  @font-face{ font-family:"Pixel Operator Mono 8"; font-weight:400; src:url("fonts/pixel_operator/PixelOperatorMono8.ttf") format("truetype"); }
+  @font-face{ font-family:"Pixel Operator Mono 8"; font-weight:700; src:url("fonts/pixel_operator/PixelOperatorMono8-Bold.ttf") format("truetype"); }
+  @font-face{ font-family:"BetterVCR"; font-weight:400; src:url("fonts/BetterVCR%2025.09.ttf") format("truetype"); }
+  @font-face{ font-family:"Logisoso"; font-weight:500; src:url("fonts/OSP_Logisoso/Logisoso.ttf") format("truetype"); }
+  :root{
+    color-scheme:light;
+    --bg:#f6f6f4; --surface:#ffffff; --surface-2:#f1f1ee; --ink:#18181b; --muted:#71717a; --faint:#a1a1aa;
+    --line:#e6e6e2; --line-strong:#d6d6d1; --on-ink:#ffffff;
+    --shadow:0 1px 2px rgba(0,0,0,.04), 0 4px 16px rgba(0,0,0,.04);
+  }
+  *{box-sizing:border-box}
+  [hidden]{display:none !important}
+  body{margin:0;min-height:100vh;background:var(--bg);color:var(--ink);font-family:"Plus Jakarta Sans",system-ui,sans-serif;line-height:1.5;-webkit-font-smoothing:antialiased;
+    display:flex;flex-direction:column;align-items:center;padding:32px 16px}
+  button,select,input{font:inherit;color:inherit}
+  button{cursor:pointer}
+  .stage{display:flex;flex-direction:column;align-items:center;gap:22px;width:100%;max-width:960px}
+  h1{margin:0;font-size:24px;font-weight:600;letter-spacing:-.02em;text-align:center}
+  .sub{margin:2px 0 0;font-size:13px;color:var(--muted);text-align:center;font-variant-numeric:tabular-nums}
+
+  .view{width:100%;overflow:auto;display:grid;place-items:center;padding:16px 0;min-height:160px;position:relative}
+  .view canvas{display:block;flex:none}
+  .view.draw canvas{cursor:crosshair}
+  /* Compare: one card per font, in a grid that wraps (4 across when they fit, then 2×2) */
+  .compare{display:flex;flex-wrap:wrap;justify-content:center;gap:20px;max-width:100%;padding:8px 0}
+  .ccol{display:flex;flex-direction:column;align-items:stretch;gap:0;background:var(--surface);border:1px solid var(--line);
+    border-radius:16px;box-shadow:var(--shadow);overflow:hidden}
+  .ccol canvas{align-self:center;margin:36px 40px 40px}
+  .chead{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--line)}
+  .chead select{flex:1}
+  .chead .num{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--muted)}
+  .chead .num input{width:72px}
+  .chead select{min-width:150px}
+  .chead .cpng{width:32px;padding:0;display:inline-grid;place-items:center;color:var(--muted);flex:none}
+  .chead .cpng:hover{color:var(--ink)}
+  /* All screens: each screen with its name underneath; click to edit it */
+  .allgrid{display:flex;flex-wrap:wrap;justify-content:center;gap:28px 36px;max-width:100%;padding:8px 0}
+  .acell{display:flex;flex-direction:column;align-items:center;gap:6px;background:none;border:none;padding:0;cursor:pointer;color:var(--muted)}
+  .acell canvas{display:block}
+  .acell span{font-size:12.5px;font-weight:500}
+  .acell:hover span{color:var(--ink)}
+  .acell.current span{color:var(--ink);font-weight:700}
+  body.comparing .view{width:calc(100vw - 32px);max-width:none}
+  .tag{position:absolute;left:0;top:0;font-size:11.5px;font-weight:500;color:var(--faint);font-variant-numeric:tabular-nums}
+
+  .bar{display:flex;align-items:center;gap:6px;background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:6px;box-shadow:var(--shadow);flex-wrap:wrap;justify-content:center}
+  .seg{display:inline-flex;gap:2px;padding:3px;border-radius:11px;background:var(--surface-2);border:1px solid var(--line)}
+  .seg button{height:30px;min-width:36px;padding:0 10px;border:none;border-radius:8px;background:none;font-size:13px;font-weight:600;color:var(--muted)}
+  .seg button:hover{color:var(--ink)}
+  .seg button[aria-checked="true"]{background:var(--surface);color:var(--ink);box-shadow:0 1px 2px rgba(0,0,0,.08)}
+  .sep{width:1px;height:22px;background:var(--line);margin:0 4px}
+  .lbl{font-size:12.5px;font-weight:500;color:var(--muted);padding:0 4px}
+  .switch{display:inline-flex;align-items:center;gap:8px;height:36px;padding:0 10px;border-radius:9px;font-size:13px;font-weight:500;cursor:pointer;user-select:none}
+  .switch:hover{background:var(--surface-2)}
+  .switch input{position:absolute;opacity:0;width:1px;height:1px;margin:0}
+  .switch .track{position:relative;width:30px;height:18px;border-radius:99px;background:var(--line-strong);transition:background .18s;flex:none}
+  .switch .track::after{content:"";position:absolute;top:2px;left:2px;width:14px;height:14px;border-radius:50%;background:#fff;box-shadow:0 1px 2px rgba(0,0,0,.25);transition:transform .18s}
+  .switch input:checked + .track{background:var(--ink)}
+  .switch input:checked + .track::after{transform:translateX(12px)}
+  input[type=range]{accent-color:var(--ink);width:110px}
+  select,input[type=text],input[type=number]{height:32px;border:1px solid var(--line);border-radius:8px;background:var(--surface);padding:0 8px;font-size:13px}
+  input[type=number]{width:72px}
+  .btn{height:32px;padding:0 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface);font-size:13px;font-weight:600}
+  .btn:hover{border-color:var(--line-strong);background:var(--surface-2)}
+  .btn.primary{background:var(--ink);color:var(--on-ink);border-color:var(--ink)}
+  :is(.seg button,.btn,select,input):focus-visible,.switch:has(:focus-visible){outline:2px solid color-mix(in srgb,var(--ink) 40%,transparent);outline-offset:1px}
+
+  .panels{display:grid;grid-template-columns:1fr 1fr;gap:16px;width:100%}
+  @media (max-width:760px){ .panels{grid-template-columns:1fr} }
+  .card{background:var(--surface);border:1px solid var(--line);border-radius:14px;padding:16px;box-shadow:var(--shadow);display:flex;flex-direction:column;gap:12px;min-width:0}
+  .glyphs{display:flex;flex-wrap:wrap;gap:4px}
+  .glyphs button{position:relative;display:grid;place-items:center;min-width:30px;min-height:30px;padding:4px;border:1px solid var(--line);border-radius:7px;background:#0b0b0c}
+  .glyphs button:hover{border-color:var(--line-strong)}
+  .glyphs button[aria-pressed="true"]{outline:2px solid var(--ink);outline-offset:1px}
+  .glyphs button.edited::after{content:"";position:absolute;top:3px;right:3px;width:5px;height:5px;border-radius:50%;background:#e8a33d}
+  .glyphs canvas{display:block;image-rendering:pixelated}
+  .pfedit{display:flex;gap:24px;align-items:flex-start;flex-wrap:wrap}
+  #pfCanvas{cursor:crosshair;touch-action:none;flex:none}
+  .pfside{display:flex;flex-direction:column;gap:10px;min-width:220px}
+  .pfchar{font-size:30px;font-weight:600;line-height:1.1}
+  .pfpreview{display:grid;place-items:center;overflow:auto;padding:4px 0}
+  .card.wide{grid-column:1 / -1}
+  .editor{border:1px solid var(--line);border-radius:12px;padding:12px;margin:0;display:flex;flex-direction:column;gap:10px;min-width:0}
+  .editor legend{font-size:12.5px;font-weight:600;color:var(--muted);padding:0 4px}
+  .editor:disabled{opacity:.55}
+  #textItems{display:flex;flex-direction:column;gap:8px}
+  .titem{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .titem input[type=text]{flex:1;min-width:160px}
+  .titem .num{display:inline-flex;align-items:center;gap:5px;font-size:12.5px;font-weight:500;color:var(--muted)}
+  .titem .num input{width:68px}
+  .titem input:disabled{opacity:.45}
+  .icon-btn{display:grid;place-items:center;width:32px;height:32px;border:none;background:none;border-radius:8px;color:var(--muted);font-size:18px;line-height:1;cursor:pointer}
+  .icon-btn:hover{background:var(--surface-2);color:var(--ink)}
+  .btn:disabled{opacity:.4;cursor:default}
+  .card h2{margin:0;font-size:14px;font-weight:600}
+  .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+  .row > input[type=text]{flex:1;min-width:140px}
+  .states{display:flex;flex-wrap:wrap;gap:6px}
+  .states button{height:30px;padding:0 10px;border:1px solid var(--line);border-radius:99px;background:var(--surface);font-size:12.5px;font-weight:500;color:var(--muted)}
+  .states button:hover{color:var(--ink);border-color:var(--line-strong)}
+  .states button[aria-pressed="true"]{background:var(--ink);border-color:var(--ink);color:var(--on-ink)}
+  .drop{border:1.5px dashed var(--line-strong);border-radius:10px;padding:14px;text-align:center;font-size:12.5px;color:var(--muted)}
+  .drop.over{border-color:var(--ink);color:var(--ink);background:var(--surface-2)}
+  .note{font-size:12px;color:var(--faint);margin:0}
+  .specs{width:100%;font-size:12.5px;color:var(--muted);display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:4px 18px;font-variant-numeric:tabular-nums}
+  .specs b{color:var(--ink);font-weight:600}
+  details{width:100%}
+  summary{cursor:pointer;font-size:13px;font-weight:600;color:var(--muted)}
+  .hint{font-size:12px;color:var(--faint);text-align:center;max-width:640px}
+</style>
+</head>
+<body>
+<main class="stage">
+  <div>
+    <h1>Display Simulator</h1>
+    <p class="sub">Winstar WEA012840A · 1.3″ 128×40 white OLED · pixel pitch 0.249 × 0.217 mm</p>
+  </div>
+
+  <div class="view" id="view"><span class="tag" id="tag"></span><canvas id="out"></canvas><div class="compare" id="compare" hidden></div><div class="allgrid" id="allgrid" hidden></div></div>
+
+  <div class="bar">
+    <span class="lbl">Zoom</span>
+    <div class="seg" id="zoom" role="radiogroup" aria-label="Zoom"></div>
+    <span class="sep"></span>
+    <label class="switch" title="Show mm dimension lines around the display"><input type="checkbox" id="dims" checked><span class="track"></span>mm</label>
+    <label class="switch" title="Draw the module's glass, polarizer and black mask around the pixels"><input type="checkbox" id="panel" checked><span class="track"></span>Panel</label>
+    <label class="switch" title="Comparison only: redraws the image with square pixels, the way 128×40 artwork looks in Figma. The real panel's pixels are 0.249 × 0.217 mm."><input type="checkbox" id="square"><span class="track"></span>As drawn (Figma)</label>
+    <label class="switch" title="Soft light bleed around lit pixels"><input type="checkbox" id="glow" checked><span class="track"></span>Glow</label>
+    <span class="sep"></span>
+    <span class="lbl">Brightness</span><input type="range" id="bright" min="0" max="255" value="255" aria-label="Brightness (dimmer step)">
+    <span class="sep"></span>
+    <span class="lbl" title="How grey an anti-aliased edge has to be to light its pixel. Lower makes text bolder, higher makes it thinner.">Threshold</span><input type="range" id="thresh" min="1" max="254" value="128" aria-label="Threshold">
+  </div>
+
+  <div class="panels">
+    <section class="card wide">
+      <h2>HMI screens</h2>
+      <div class="states" id="states"></div>
+      <div class="row">
+        <span class="lbl">View</span>
+        <div class="seg" id="viewmode" role="radiogroup" aria-label="View"><button role="radio" data-v="single">Single</button><button role="radio" data-v="compare" title="Four displays side by side, each with its own font">Compare 4 fonts</button><button role="radio" data-v="all" title="Every HMI screen at once, in the font above">All screens</button></div>
+        <button class="btn" id="allPng" hidden title="Every screen as a PNG, as drawn (zoom, panel, glow, dimensions), in one zip">Download all PNGs</button>
+      </div>
+      <div class="row">
+        <span class="lbl">Font</span><select id="hfont" aria-label="Font for HMI screens"></select>
+        <input type="text" id="hfontOther" placeholder="Installed or Google Fonts name" aria-label="Other font name" hidden>
+        <span class="lbl" title="Size of this screen's main text, in px. Other text on the screen scales with it.">Size</span><input type="number" id="hsize" min="4" max="80" step="0.5" aria-label="Main text size in px">
+        <span class="lbl">Weight</span>
+        <select id="hweight" aria-label="Weight">
+          <option value="design">As designed</option><option value="300">300 Light</option><option value="400">400 Regular</option>
+          <option value="500">500 Medium</option><option value="600">600 SemiBold</option><option value="700">700 Bold</option><option value="800">800 ExtraBold</option>
+        </select>
+        <span class="lbl" title="Extra space between letters, in display pixels. Negative tightens. Text without letters (the timer, battery percentages) isn't spaced.">Letter spacing</span><input type="number" id="hspace" min="-4" max="12" step="1" value="0" aria-label="Letter spacing in px"><span class="lbl">px</span>
+      </div>
+      <div class="row">
+        <label class="switch" title="When you switch fonts, rescale every size so capitals stay as tall"><input type="checkbox" id="hcap" checked><span class="track"></span>Match cap height</label>
+        <label class="switch" title="Draw at whole-pixel sizes and positions, like a firmware bitmap font. Pixel fonts snap to their crisp size: one font pixel per display pixel."><input type="checkbox" id="hsnap" checked><span class="track"></span>Pixel snap</label>
+        <label class="switch" title="Render outline fonts like a bitmap font: every copy of a letter uses the same bitmap, and baseline, x-height and cap height land on whole rows. Pixel fonts are already bitmaps."><input type="checkbox" id="hbitmap" checked><span class="track"></span>Bitmap font</label>
+        <label class="switch" title="Draw the battery, bolt and bars from the pixel editor's Icons tab instead of the vector artwork"><input type="checkbox" id="hpicons" checked><span class="track"></span>Pixel icons</label>
+        <label class="switch" title="On screens with only text, center it on the 40 rows by its lit pixels, so a word without descenders doesn't sit high. Screens with icons keep their designed baseline."><input type="checkbox" id="hvc" checked><span class="track"></span>Center text vertically</label>
+        <label class="switch" title="Show every text in capitals. Your text keeps its case, so you can turn this back off."><input type="checkbox" id="hcaps"><span class="track"></span>All caps</label>
+        <label class="switch" title="Show the original exported artwork instead of the live rebuild"><input type="checkbox" id="horig"><span class="track"></span>Original artwork</label>
+      </div>
+      <fieldset class="editor" id="editor" hidden>
+        <legend>Text on this screen</legend>
+        <div id="textItems"></div>
+        <div class="row">
+          <button class="btn" id="addText">+ Add text</button>
+          <button class="btn" id="resetScreen">Reset screen</button>
+          <span class="lbl" id="editNote"></span>
+        </div>
+      </fieldset>
+      <div class="row" id="textmode" hidden>
+        <span class="lbl">Long text</span>
+        <div class="seg" role="radiogroup" aria-label="Long text"><button role="radio" data-m="scroll">Scroll</button><button role="radio" data-m="step">Step</button></div>
+        <span class="lbl" id="animNote"></span>
+      </div>
+      <p class="note" id="statesNote"></p>
+    </section>
+
+    <section class="card wide" id="pfCard">
+      <h2>Pixel editor · Custom Pixel font and icons</h2>
+      <div class="row">
+        <div class="seg" id="pfSize" role="radiogroup" aria-label="Font size"></div>
+        <span class="sep"></span>
+        <button class="btn" id="pfUse" title="Show Custom Pixel on the HMI screens above">Use on HMI screens</button>
+        <button class="btn" id="pfExportJs" title="Save the font as a file; put it next to DisplaySim.html to make it everyone's starting point">Download pixel-font.js</button>
+        <button class="btn" id="pfExportBdf" title="This size as a BDF bitmap font, for U8g2 and other firmware font tools">Download BDF</button>
+        <button class="btn" id="pfIconPng" hidden title="This icon as a PNG, one image pixel per display pixel, white on black">Download PNG</button>
+        <button class="btn" id="pfIconZip" hidden title="Every icon as a PNG (one image pixel per display pixel, white on black) in a zip, with icons.csv listing each one's size and screen position">Download all PNGs</button>
+        <button class="btn" id="pfIconH" hidden title="Every icon as an XBM bitmap in a C header, with its size and screen position, for u8g2 drawXBMP">Download icons.h</button>
+        <label class="btn" style="display:inline-flex;align-items:center;cursor:pointer">Import…<input type="file" id="pfImport" accept=".js,.json" hidden></label>
+      </div>
+      <div class="glyphs" id="pfGlyphs" aria-label="Glyphs"></div>
+      <div class="pfedit">
+        <canvas id="pfCanvas" aria-label="Glyph pixels: click or drag to paint"></canvas>
+        <div class="pfside" id="pfTools">
+          <div><div class="pfchar" id="pfChar"></div><div class="lbl" id="pfInfo" style="padding:0"></div></div>
+          <div class="row"><span class="lbl">Width</span><button class="btn" data-pf="w-" aria-label="Narrower">−</button><span class="lbl" id="pfW"></span><button class="btn" data-pf="w+" aria-label="Wider">+</button></div>
+          <div class="row" id="pfHRow" hidden><span class="lbl">Height</span><button class="btn" data-pf="h-" aria-label="Shorter">−</button><span class="lbl" id="pfH"></span><button class="btn" data-pf="h+" aria-label="Taller">+</button></div>
+          <div class="row"><span class="lbl" id="pfMoveLbl">Move</span><button class="btn" data-pf="left" aria-label="Move left">←</button><button class="btn" data-pf="up" aria-label="Move up">↑</button><button class="btn" data-pf="down" aria-label="Move down">↓</button><button class="btn" data-pf="right" aria-label="Move right">→</button></div>
+          <div class="row"><button class="btn" data-pf="clear">Clear</button><button class="btn" data-pf="revert" title="Back to this glyph as it is in pixel-font.js (or the last import or regenerate)">Revert glyph</button></div>
+          <label class="switch" title="Draw cells with the panel's real proportions: 15% wider than tall"><input type="checkbox" id="pfTrue" checked><span class="track"></span>True pixel shape</label>
+          <p class="note">Click or drag to paint; starting on a lit pixel erases. ⌘Z undoes.</p>
+        </div>
+      </div>
+      <div class="row"><span class="lbl">Preview</span><span class="lbl" id="pfPreviewLbl" hidden></span><input type="text" id="pfSample" value="Ready 59:59" aria-label="Preview text"></div>
+      <div class="pfpreview"><canvas id="pfPreview"></canvas></div>
+      <div class="row">
+        <button class="btn" id="pfReset" title="Replace this browser's copy of the font and icons with pixel-font.js">Reset to pixel-font.js…</button>
+        <button class="btn" id="pfRegen">Regenerate from Plus Jakarta Sans…</button>
+        <label class="switch" title="Draw letters 13% narrower than Plus Jakarta Sans, so they look right on the panel's wide pixels"><input type="checkbox" id="pfNarrow" checked><span class="track"></span>Narrow for wide pixels</label>
+      </div>
+      <p class="note" id="pfNote"></p>
+    </section>
+
+    <section class="card">
+      <h2>Your artwork</h2>
+      <div class="drop" id="drop">Drop a PNG or SVG here, paste from the clipboard (⌘V), or <label style="text-decoration:underline;cursor:pointer">choose a file<input type="file" id="file" accept="image/*" hidden></label>.<br>Draw it at 128 × 40 px.</div>
+      <div class="row">
+        <label class="switch" title="Light areas of the artwork are lit pixels; turn on to swap"><input type="checkbox" id="invert"><span class="track"></span>Invert</label>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Edit pixels</h2>
+      <div class="row">
+        <label class="switch" title="Click or drag on the display to toggle pixels"><input type="checkbox" id="draw"><span class="track"></span>Draw on display</label>
+        <button class="btn" id="clear">Clear</button>
+        <button class="btn" id="fill">Fill</button>
+        <button class="btn" id="export">Export 128×40 PNG</button>
+      </div>
+      <p class="note">Export saves the current framebuffer, one image pixel per display pixel.</p>
+    </section>
+  </div>
+
+  <details>
+    <summary>Monitor calibration</summary>
+    <div class="card" style="margin-top:10px">
+      <div class="row">
+        <span class="lbl">Monitor</span>
+        <select id="mon">
+          <option value="218" data-native="5120">Apple Studio Display (218 ppi)</option>
+          <option value="254.1" data-native="3024">MacBook Pro 14″ (254 ppi)</option>
+          <option value="254" data-native="3456">MacBook Pro 16″ (254 ppi)</option>
+          <option value="224" data-native="2560">MacBook Air 13″ (224 ppi)</option>
+          <option value="custom">Custom ppi…</option>
+        </select>
+        <input type="number" id="ppi" min="50" max="600" step="0.1" value="218" aria-label="Pixels per inch">
+        <span class="lbl" id="calc"></span>
+      </div>
+      <div class="row">
+        <span class="lbl">Fine-tune</span><input type="range" id="fine" min="-10" max="10" step="0.1" value="0" style="width:200px" aria-label="Fine-tune scale percent"><span class="lbl" id="fineVal">0%</span>
+        <button class="btn" id="card">Check with a credit card</button>
+      </div>
+      <p class="note">Actual size assumes browser zoom is 100% (⌘0). The Studio Display has 5120 physical pixels across; the page reads your macOS “Looks like” scaling from the browser so 1× stays true to size at any setting. To check, hold a credit card (85.6 mm wide) against the outline and nudge Fine-tune until they match.</p>
+      <canvas id="cardOut" hidden style="display:block"></canvas>
+    </div>
+  </details>
+
+  <div class="specs" id="specs"></div>
+  <p class="hint">Each lit pixel is drawn as its 0.229 × 0.197 mm emitter inside a 0.249 × 0.217 mm cell, so it is about 15% wider than tall. Artwork drawn with square pixels will look stretched sideways on the real panel; turn on As drawn (Figma) to compare.</p>
+</main>
+
+<script src="hmi-screens.js"></script>
+<!-- pixel-font.js changes whenever the font is re-exported: load it fresh, not from the browser cache -->
+<script>document.write('<script src="pixel-font.js?v=' + Date.now() + '"><\/script>');</script>
+<script>
+// ---- Panel geometry, all in mm (Winstar WEA012840A spec sheet) ----
+const W = 128, H = 40;
+const PITCH = {x:0.249, y:0.217}, DOT = {x:0.229, y:0.197};
+const AA = {x:2.444, y:1.94, w:31.852, h:8.66};       // active area, from the panel glass's top-left
+const VA = {x:1.67,  y:1.65, w:33.4,   h:9.23};       // viewing area (black mask opening)
+const POL = {x:0.5,  y:0.5,  w:35.74,  h:10.77};      // polarizer
+const GLASS = {w:36.74, h:14};                        // panel glass
+
+const $ = id => document.getElementById(id);
+const fb = new Uint8Array(W*H);                       // framebuffer, 1 = lit
+const store = (k,v) => { try{ v === undefined ? (v = localStorage.getItem(k)) : localStorage.setItem(k,v); }catch(e){ v = null; } return v; };
+
+// ---- Monitor scale: device pixels per mm ----
+// macOS "Looks like" scaling: the screen is screen.width CSS px wide across `native` physical px,
+// so CSS px per mm = ppi/25.4 × screen.width/native. (Assumes browser zoom 100%.)
+// Custom monitors fall back to devicePixelRatio = physical px per CSS px.
+function devPxPerMm(){
+  const o = $("mon").selectedOptions[0], ppi = +$("ppi").value || 218, fine = 1 + (+$("fine").value)/100;
+  const native = +o.dataset.native, perCss = native ? native / screen.width : dpr();
+  return ppi / 25.4 / perCss * dpr() * fine;
+}
+const dpr = () => window.devicePixelRatio || 1;
+
+// ---- Render ----
+const ZOOMS = [1, 2, 4, 8];
+let zoom = +(store("dsim-zoom") || 4); if(!ZOOMS.includes(zoom)) zoom = 4;
+$("zoom").innerHTML = ZOOMS.map(z=>`<button role="radio" data-z="${z}">${z===1?"1× actual":z+"×"}</button>`).join("");
+$("zoom").onclick = e => { const b = e.target.closest("button"); if(!b) return; zoom = +b.dataset.z; store("dsim-zoom", zoom); render(); };
+
+function geom(){
+  const sq = $("square").checked;
+  const pitch = sq ? {x:PITCH.x, y:PITCH.x} : PITCH;
+  const dot = sq ? {x:DOT.x, y:DOT.x} : DOT;
+  const aaH = (H-1)*pitch.y + dot.y, extra = aaH - AA.h;           // square pixels make the area taller
+  return {pitch, dot, aa:{...AA, h:aaH}, va:{...VA, h:VA.h+extra}, pol:{...POL, h:POL.h+extra}, glass:{...GLASS, h:GLASS.h+extra}};
+}
+
+function render(dirty){                                 // dirty: in All screens, only these cards changed
+  document.querySelectorAll("#zoom button").forEach(b=>b.setAttribute("aria-checked", +b.dataset.z===zoom));
+  const multi = compareActive(), all = allActive();
+  $("out").hidden = multi || all; $("compare").hidden = !multi; $("allgrid").hidden = !all;
+  document.body.classList.toggle("comparing", multi || all);
+  if(all){ allCards.forEach((c, i) => { c.el.classList.toggle("current", c.st === current); if(!dirty || dirty.has(i)) paint(c.canvas, c.fb); }); }
+  else if(multi) cols.forEach(c => paint(c.canvas, c.fb)); else paint($("out"), fb);
+  const g = geom();
+  $("tag").textContent = (zoom === 1 ? `Actual size · active area 31.9 × ${g.aa.h.toFixed(1)} mm` : `${zoom}× actual size`)
+    + ($("square").checked ? " · as drawn in Figma (square pixels), not the real panel" : "");
+  $("view").classList.toggle("draw", $("draw").checked);
+  $("calc").textContent = `${(devPxPerMm()/dpr()).toFixed(2)} CSS px/mm · screen ${screen.width} px wide · DPR ${dpr()}`;
+}
+function paint(c, buf, opts = {}){
+  const g = geom(), showPanel = $("panel").checked;
+  const k = devPxPerMm() * zoom;                                   // device px per mm on screen
+  const frame = showPanel ? {x:0, y:0, w:g.glass.w, h:g.glass.h} : {x:g.aa.x-0.6, y:g.aa.y-0.6, w:g.aa.w+1.2, h:g.aa.h+1.2};
+  const showDims = opts.dims ?? $("dims").checked;
+  const m = (showDims ? MARGIN : 0)*dpr(), pw = Math.round(frame.w*k + 2*m), ph = Math.round(frame.h*k + 2*m);
+  c.width = pw; c.height = ph;
+  c.style.width = pw/dpr() + "px"; c.style.height = ph/dpr() + "px";
+  const x = c.getContext("2d");
+  x.setTransform(k,0,0,k,m-frame.x*k,m-frame.y*k);                  // draw in mm, inside the dimension margin
+
+  if(showPanel){
+    x.fillStyle = "#1d1d20"; rr(x, 0, 0, g.glass.w, g.glass.h, 0.3); x.fill();          // glass + tail
+    x.fillStyle = "#26262a"; x.fillRect(g.pol.x, g.pol.y, g.pol.w, g.pol.h);            // polarizer
+    x.fillStyle = "#050506"; x.fillRect(g.va.x, g.va.y, g.va.w, g.va.h);                // black mask
+  } else { x.fillStyle = "#050506"; x.fillRect(frame.x, frame.y, frame.w, frame.h); }
+  x.fillStyle = "#08080a"; x.fillRect(g.aa.x, g.aa.y, g.aa.w, g.aa.h);                  // unlit OLED
+
+  // Lit pixels: white OLED; dimmer step 0-255 scales emission (step 0 is still faintly on)
+  const level = 0.06 + 0.94 * (+$("bright").value/255);
+  const col = `rgba(244,247,255,${level})`;
+  const dots = new Path2D();
+  for(let r=0;r<H;r++) for(let q=0;q<W;q++) if(buf[r*W+q])
+    dots.rect(g.aa.x + q*g.pitch.x, g.aa.y + r*g.pitch.y, g.dot.x, g.dot.y);
+  if($("glow").checked){
+    x.save(); x.filter = `blur(${Math.max(1, 0.12*k)}px)`; x.globalAlpha = 0.55; x.fillStyle = col; x.fill(dots); x.restore();
+  }
+  x.fillStyle = col; x.fill(dots);
+
+  // Dimension lines (mm): active area on top/left, panel glass (or viewing area) on bottom/right
+  const X = mm => m + (mm-frame.x)*k, Y = mm => m + (mm-frame.y)*k, d = dpr();
+  x.setTransform(1,0,0,1,0,0);
+  if(showDims){
+  const top =Y(frame.y), bot = Y(frame.y+frame.h), lft = X(frame.x), rgt = X(frame.x+frame.w);
+  dimH(x, X(g.aa.x), X(g.aa.x+g.aa.w), top - 22*d, Y(g.aa.y), `${fmt(g.aa.w)} (active area)`, -1);
+  dimV(x, Y(g.aa.y), Y(g.aa.y+g.aa.h), lft - 22*d, X(g.aa.x), fmt(g.aa.h), -1);
+  if(showPanel){
+    dimH(x, X(0), X(g.glass.w), bot + 22*d, bot, `${fmt(g.glass.w)} (panel)`, 1);
+    dimV(x, Y(0), Y(g.glass.h), rgt + 22*d, rgt, fmt(g.glass.h), 1);
+  }
+  }
+}
+// ---- Dimension lines, drawn in device px. `at` is where the dimension line runs, `from` the edge it measures off;
+// side = -1 puts the label above/left of the line, 1 below/right.
+const MARGIN = 64;                                     // CSS px around the render for dimensions
+const fmt = v => (+v.toFixed(3)).toString() + " mm";
+function dimStyle(x){ const d = dpr(); x.strokeStyle = x.fillStyle = "#71717a"; x.lineWidth = d; x.font = `500 ${11*d}px "Plus Jakarta Sans", system-ui, sans-serif`; return d; }
+function tick(x, x1, y1, x2, y2){ x.beginPath(); x.moveTo(x1, y1); x.lineTo(x2, y2); x.stroke(); }
+function dimH(x, a, b, at, from, label, side){
+  const d = dimStyle(x), t = 4*d;
+  tick(x, a, from, a, at + side*t); tick(x, b, from, b, at + side*t);       // extension lines
+  tick(x, a, at, b, at);
+  tick(x, a-t, at+t, a+t, at-t); tick(x, b-t, at+t, b+t, at-t);            // architectural ticks
+  x.textAlign = "center"; x.textBaseline = side < 0 ? "bottom" : "top";
+  x.fillText(label, (a+b)/2, at + side*5*d);
+}
+function dimV(x, a, b, at, from, label, side){
+  const d = dimStyle(x), t = 4*d;
+  tick(x, from, a, at + side*t, a); tick(x, from, b, at + side*t, b);
+  tick(x, at, a, at, b);
+  tick(x, at-t, a+t, at+t, a-t); tick(x, at-t, b+t, at+t, b-t);
+  x.save(); x.translate(at + side*5*d, (a+b)/2); x.rotate(-Math.PI/2);
+  x.textAlign = "center"; x.textBaseline = side < 0 ? "bottom" : "top";
+  x.fillText(label, 0, 0); x.restore();
+}
+function rr(x, X, Y, w, h, r){ x.beginPath(); x.roundRect ? x.roundRect(X,Y,w,h,r) : x.rect(X,Y,w,h); }
+
+// ---- Load a 128×40 image source into the framebuffer ----
+// Each frame is drawn at SS× resolution and box-averaged down to 128×40, so a pixel lights by how much of its
+// cell the ink truly covers (the browser's own small-size text rendering runs heavier than the outlines).
+const SS = 8;
+const work = document.createElement("canvas"); work.width = W*SS; work.height = H*SS;
+const wctx = work.getContext("2d", {willReadFrequently:true});
+let lastDraw = null;                                     // re-run on threshold/invert change
+function fromCanvas(buf = fb, thr){
+  const d = wctx.getImageData(0,0,W*SS,H*SS).data, t = thr ?? +$("thresh").value, inv = $("invert").checked;
+  const sum = new Float32Array(W*H), row = W*SS*4;
+  for(let y=0;y<H*SS;y++){
+    const r = (y/SS|0)*W, o = y*row;
+    for(let x=0;x<W*SS;x++){ const i = o + x*4; sum[r + (x/SS|0)] += 0.2126*d[i] + 0.7152*d[i+1] + 0.0722*d[i+2]; }
+  }
+  for(let p=0;p<W*H;p++) buf[p] = (sum[p]/(SS*SS) >= t) !== inv ? 1 : 0;
+}
+function rasterize(fn, buf, thr){
+  wctx.setTransform(1,0,0,1,0,0); wctx.imageSmoothingEnabled = true; wctx.fillStyle = "#000"; wctx.fillRect(0,0,W*SS,H*SS);
+  wctx.setTransform(SS,0,0,SS,0,0);                    // callers draw in display pixels
+  fn(wctx); fromCanvas(buf, thr);
+}
+function drawWith(fn){ lastDraw = fn; rasterize(fn, fb); render(); }
+$("thresh").oninput = $("invert").onchange = () => current ? redraw() : lastDraw && drawWith(lastDraw);
+
+function loadImage(src){
+  const im = new Image();
+  im.onload = () => drawWith(x => {
+    x.imageSmoothingEnabled = false;
+    const w = im.naturalWidth || W, h = im.naturalHeight || H;
+    if(w === W && h === H) return x.drawImage(im, 0, 0);
+    const s = Math.min(W/w, H/h);                          // other sizes: fit and center
+    x.imageSmoothingEnabled = true;
+    x.drawImage(im, (W-w*s)/2, (H-h*s)/2, w*s, h*s);
+  });
+  im.src = src;
+  setPressed(null);
+}
+function loadFile(f){ if(f && f.type.startsWith("image/")) loadImage(URL.createObjectURL(f)); }
+$("file").onchange = e => loadFile(e.target.files[0]);
+const drop = $("drop");
+drop.ondragover = e => { e.preventDefault(); drop.classList.add("over"); };
+drop.ondragleave = () => drop.classList.remove("over");
+drop.ondrop = e => { e.preventDefault(); drop.classList.remove("over"); loadFile(e.dataTransfer.files[0]); };
+document.addEventListener("paste", e => {
+  if(e.target.closest("input[type=text]")) return;
+  const it = [...(e.clipboardData?.items||[])].find(i => i.type.startsWith("image/"));
+  if(it){ e.preventDefault(); loadFile(it.getAsFile()); }
+});
+
+// ---- HMI screens, built live: text in any font, icons as vector shapes ----
+// Measured from the HMI-Flow artwork (239×109 SVGs, display = the 128×40 rect at x46 y36). Its labels are
+// Plus Jakarta Sans SemiBold; positions are the ink's horizontal center and the baseline, in display pixels.
+const SCREEN = {x:46, y:36};
+let hmi = [];
+const ART = (d) => new Path2D(d);                       // paths in artwork coordinates (drawn shifted by -46, -36)
+const ICONS = {
+  battSmall: ART("M168.25 48.75C168.46 48.75 168.638 48.6775 168.783 48.5325C168.928 48.3925 169 48.215 169 48L169 46.5L170.5 46.5L170.5 43.5L169 43.5L169 42C169 41.785 168.927 41.6075 168.782 41.4675C168.637 41.3275 168.46 41.255 168.25 41.25L156.25 41.25C156.035 41.25 155.857 41.3225 155.717 41.4675C155.577 41.6125 155.505 41.79 155.5 42L155.5 48C155.5 48.215 155.572 48.3925 155.718 48.5325C155.862 48.6725 156.04 48.745 156.25 48.75L168.25 48.75ZM167.5 47.25L162.25 47.25L162.25 42.75L167.5 42.75L167.5 47.25Z"),
+  battOutline: ART("M88.667 64.3334C89.1337 64.3334 89.5281 64.1723 89.8503 63.8501C90.1725 63.539 90.3337 63.1445 90.3337 62.6667V59.3334H93.667V52.6667H90.3337V49.3334C90.3337 48.8556 90.1725 48.4612 89.8503 48.1501C89.5281 47.839 89.1337 47.6779 88.667 47.6667H62.0003C61.5225 47.6667 61.1281 47.8279 60.817 48.1501C60.5059 48.4723 60.3448 48.8667 60.3337 49.3334V62.6667C60.3337 63.1445 60.4948 63.539 60.817 63.8501C61.1392 64.1612 61.5337 64.3223 62.0003 64.3334H88.667ZM87.0003 61.0001H68.667V51.0001H87.0003V61.0001Z"),
+  battFull: ART("M55.8337 62.6666C55.8337 63.1333 55.9948 63.5277 56.317 63.8499C56.6281 64.1721 57.0225 64.3333 57.5003 64.3333H84.167C84.6448 64.3333 85.0392 64.1721 85.3503 63.8499C85.6614 63.5277 85.8225 63.1333 85.8337 62.6666V59.3333H89.167V52.6666H85.8337V49.3333C85.8337 48.8555 85.6725 48.461 85.3503 48.1499C85.0281 47.8388 84.6337 47.6777 84.167 47.6666H57.5003C57.0225 47.6666 56.6281 47.8277 56.317 48.1499C56.0059 48.4721 55.8448 48.8666 55.8337 49.3333V62.6666Z"),
+  bolt: ART("M159 66L160 59H155L164 46H166L165 54H171L161 66H159Z"),
+  // Dayspring wordmark (custom letterforms, so it doesn't follow the font picker; its pixel version is in the Icons tab)
+  logo: ART("M119.069 48.7434C119.237 48.4692 119.337 48.1484 119.337 47.804C119.337 46.8076 118.525 46 117.523 46C116.521 46 115.709 46.8076 115.709 47.804C115.709 48.1494 115.808 48.4711 115.978 48.7453C116.462 48.6144 116.984 48.5432 117.529 48.5432C118.07 48.5432 118.589 48.6144 119.069 48.7434Z"
+    + "M58.8824 47.804H55.0419C54.3063 47.804 54 48.1086 54 48.8203V60.5626C54 61.2534 54.2862 61.558 55.0419 61.558H58.8824C62.6818 61.558 65.6434 59.4456 65.6434 54.6715C65.6434 49.8964 62.6818 47.804 58.8824 47.804ZM58.8213 59.5064H56.3291V49.8964H58.8213C61.5587 49.8964 63.3354 51.4612 63.3354 54.6914C63.3354 57.9216 61.5587 59.5064 58.8213 59.5064Z"
+    + "M75.8654 58.3886V55.3823C75.8654 52.6797 74.3941 51.2373 71.4124 51.2373C69.2465 51.2373 67.633 52.2328 67.633 53.3098C67.633 53.8792 68.0414 54.1221 68.5108 54.2644C69.0633 53.6144 70.1253 53.0251 71.3303 53.0251C72.9238 53.0251 73.7405 53.5945 73.7405 55.0369V55.7885C73.189 55.6262 72.5354 55.3415 71.1872 55.3415C68.736 55.3415 67.0605 56.5609 67.0605 58.5917C67.0605 60.5019 68.4708 61.7004 70.6147 61.7004C72.3513 61.7004 73.3321 60.7458 73.8016 60.0341C73.8226 60.0341 73.8226 60.0549 73.8226 60.0549C73.9037 60.9688 74.4151 61.5989 75.3139 61.5989C76.0696 61.5989 76.56 61.132 76.7031 60.6234C76.1516 60.4203 75.8654 59.9325 75.8654 58.3886ZM73.7405 57.637C73.7405 58.9779 72.5765 60.0341 71.1052 60.0341C69.9001 60.0341 69.1654 59.4457 69.1654 58.4702C69.1654 57.4539 69.9821 56.8038 71.4124 56.8038C72.3103 56.8038 73.128 57.0278 73.7405 57.2916V57.637Z"
+    + "M92.0639 55.5854C90.2864 55.1385 89.837 54.813 89.837 54.1221C89.837 53.3506 90.6537 52.9853 91.7576 52.9853C92.9217 52.9853 93.7995 53.4114 94.0657 53.7976C94.5962 53.5945 94.9035 53.3098 94.9035 52.843C94.9035 51.9082 93.7385 51.1965 91.6546 51.1965C89.6528 51.1965 87.5899 52.2935 87.5899 54.3869C87.5899 55.7885 88.4477 56.6217 90.7157 57.1702C92.6965 57.6579 93.2891 58.0024 93.2891 58.7549C93.2891 59.4657 92.5944 60.0142 91.2672 60.0142C89.5106 60.0142 88.4477 59.3641 88.0393 58.7957C87.651 59.0187 87.3447 59.3841 87.3447 59.9942C87.3447 61.0703 88.9181 61.7004 91.1651 61.7004C93.5553 61.7004 95.495 60.5427 95.495 58.6126C95.495 57.0278 94.4741 56.1538 92.0639 55.5854Z"
+    + "M102.309 51.2173C100.92 51.2173 99.7455 52.0097 99.256 52.8827V52.1957C99.256 51.7449 98.7637 51.3796 98.1578 51.3796C97.551 51.3796 97.0596 51.7449 97.0596 52.1957V65.1507C97.0596 65.6014 97.5529 65.9668 98.1626 65.9668C98.7723 65.9668 99.2656 65.6014 99.2656 65.1507V60.8472C99.8991 61.2942 100.961 61.6595 102.044 61.6595C104.454 61.6595 106.579 60.0748 106.579 56.4384C106.579 52.7204 104.699 51.2173 102.309 51.2173ZM101.635 59.8518C100.532 59.8518 99.5308 59.4247 99.3476 59.2425C99.3066 58.5109 99.2856 57.7793 99.2856 56.9869C99.2856 54.8945 99.8991 53.1066 101.717 53.1066C103.106 53.1066 104.332 53.9398 104.332 56.4384C104.332 58.8971 103.106 59.8518 101.635 59.8518Z"
+    + "M113.268 51.2581C111.941 51.2581 111.021 52.2734 110.572 53.2489V52.1956C110.572 51.7449 110.082 51.3795 109.479 51.3795C108.875 51.3795 108.387 51.7449 108.387 52.1956V60.7418C108.387 61.1926 108.885 61.5579 109.499 61.5579C110.114 61.5579 110.613 61.1926 110.613 60.7418V56.6822C110.613 54.7929 111.43 53.2281 113.166 53.2281C113.841 53.2281 114.27 53.4928 114.576 53.6959C114.821 53.472 115.046 53.1474 115.046 52.5581C115.046 51.7857 114.371 51.2581 113.268 51.2581Z"
+    + "M126.334 51.2173C124.66 51.2173 123.608 52.3342 123.179 53.249V52.1957C123.179 51.7449 122.689 51.3796 122.086 51.3796C121.482 51.3796 120.993 51.7449 120.993 52.1957V52.3949L120.982 59.9021V60.7419C120.982 61.1926 121.48 61.558 122.096 61.558C122.71 61.558 123.208 61.1926 123.208 60.7419V60.5426H123.209V56.3777C123.209 54.4475 124.149 53.1873 125.62 53.1873C126.887 53.1873 127.744 53.7567 127.744 55.5853V60.7419C127.744 61.1926 128.243 61.558 128.858 61.558C129.472 61.558 129.97 61.1926 129.97 60.7419V55.2807C129.97 52.2735 128.234 51.2173 126.334 51.2173Z"
+    + "M136.669 59.8518H135.096C134.442 59.8518 133.993 59.6488 133.993 59.2018C133.993 58.8564 134.422 58.511 135.015 58.511C135.26 58.511 135.607 58.5518 135.831 58.5518C137.976 58.5518 139.978 57.4947 139.978 54.9761C139.978 54.2236 139.754 53.5129 139.509 53.2083C140.121 53.0052 140.979 52.5174 140.979 51.6643C140.979 50.8719 140.264 50.3643 139.366 50.3643C139.346 51.0342 139.14 51.8465 138.589 52.2536C138.161 51.8465 137.16 51.2174 135.893 51.2174C133.646 51.2174 131.644 52.4567 131.644 54.8945C131.644 56.5808 132.42 57.4947 133.441 58.0431C132.399 58.4294 131.848 58.9579 131.848 59.811C131.848 61.335 133.38 61.5989 136.26 61.6397C138.037 61.6397 138.957 61.9443 138.957 62.7974C138.957 63.5489 137.895 64.179 135.995 64.179H135.811C134.605 64.179 133.646 63.7729 133.135 63.1428C132.87 62.8989 132.686 62.5744 132.584 62.3096C131.685 62.3504 131.194 62.879 131.194 63.6097C131.194 64.9505 133.094 65.9669 135.484 65.9669H135.995C138.916 65.9061 141 64.5852 141 62.5336C140.979 60.6233 139.427 59.8518 136.669 59.8518ZM135.831 52.822C136.934 52.822 137.956 53.4113 137.956 54.9353C137.956 56.4385 136.934 57.0278 135.831 57.0278C134.728 57.0278 133.687 56.4385 133.687 54.9353C133.687 53.4113 134.728 52.822 135.831 52.822Z"
+    + "M117.535 51.3796C116.932 51.3796 116.442 51.745 116.442 52.1957V60.742C116.442 61.1927 116.932 61.5581 117.535 61.5581C118.139 61.5581 118.628 61.1927 118.628 60.742V52.1957C118.628 51.745 118.139 51.3796 117.535 51.3796Z"
+    + "M85.5847 51.4005C84.954 51.4005 84.4502 51.7791 84.3118 52.2479L84.2078 52.599H84.2059C83.6067 54.7408 82.7432 57.3618 81.8902 59.6488C81.8091 59.5672 81.7471 59.4865 81.666 59.4049C80.7538 57.322 80.0268 54.6355 79.3436 52.3865L79.3026 52.2479C79.1604 51.7687 78.6414 51.3796 77.9954 51.3796C77.3494 51.3796 76.8266 51.7687 76.9745 52.2479L77.0928 52.6313C77.857 55.3586 78.8303 58.1115 80.0726 60.5626C80.3378 61.0703 80.522 61.3958 81.0735 61.4973H81.1145C80.6918 62.4776 80.292 63.177 79.5383 64.6735H79.5373L79.5049 64.7399L79.3102 65.1403C79.1242 65.6148 79.6566 66.0001 80.2968 66.0001C80.9361 66.0001 81.5076 65.6148 81.7271 65.1403L81.9484 64.6735H81.9475C82.0572 64.4267 82.2251 64.0415 82.3196 63.8336C83.8233 60.4791 85.2622 56.5286 86.4434 52.7072L86.4615 52.6465L86.4625 52.6455L86.5846 52.2479C86.7296 51.7791 86.2154 51.4005 85.5847 51.4005Z"),
+};
+// The same icons as pixel bitmaps, edited in the pixel editor's Icons tab. Each is {x, y, adv (width), rows}: its
+// top-left on the 128×40 screen and its rows top to bottom ("#" = lit). First pass: the vector icon thresholded
+// where it sits; the bars are clean 5×15 pills, BAR_STEP px apart. Empty and full batteries come from the low
+// ones (battState); the large ones sit at the full artwork's x, so "100%" has room. `screen` is where the editor previews it.
+// `swap`: the icon it stands in for in the preview. `c`: its name in the exported C header.
+const PIX_ICONS = [
+  {key:"battSmallEmpty", label:"Battery S · empty", screen:"Start Treatment", swap:"battSmall", c:"batt_s_empty"},
+  {key:"battSmall", label:"Battery S · low", screen:"Start Treatment", c:"batt_s_low"},
+  {key:"battSmallFull", label:"Battery S · full", screen:"Start Treatment", swap:"battSmall", c:"batt_s_full"},
+  {key:"battEmpty", label:"Battery L · empty", screen:"Battery Low", swap:"battOutline", c:"batt_l_empty"},
+  {key:"battOutline", label:"Battery L · low", screen:"Battery Low", c:"batt_l_low"},
+  {key:"battFull", label:"Battery L · full", screen:"Finished Charging", c:"batt_l_full"},
+  {key:"bolt", label:"Charging bolt", screen:"Charger Connected", c:"bolt"},
+  {key:"customM", label:"Custom treatment · M", screen:"Custom Treatment", c:"custom_m"},
+  {key:"logo", label:"Dayspring logo", screen:"Turn On", c:"logo"},
+  {key:"barOn", label:"Bar · filled", screen:"Start Treatment", c:"bar_filled"},
+  {key:"barOff", label:"Bar · empty", screen:"Start Treatment", c:"bar_empty"},
+];
+const BAR_STEP = 8;
+// Icons that share a position: Position moves them together; Width, Height and pixels are per icon
+const ICON_LINKS = [["battSmallEmpty", "battSmall", "battSmallFull"], ["battEmpty", "battOutline", "battFull"], ["barOn", "barOff"]];
+// Battery states from the low one (a solid block with a hole on the right): full fills the hole; empty keeps a
+// left border as wide as the right one and clears the rest of the block
+function battRows(low, mode){
+  const hole = row => {                                  // [first lit, last hole col, lit run after the hole] or null
+    const a = row.indexOf("#"), b = row.lastIndexOf("#"), h1 = row.lastIndexOf(".", b);
+    return a < 0 || h1 < a ? null : [a, h1, row.slice(h1 + 1).search(/\.|$/)];
+  };
+  const runs = low.rows.map(hole).filter(Boolean), rb = runs.length ? Math.min(...runs.map(h => h[2])) : 0;   // right border width
+  return low.rows.map(row => {
+    const a = row.indexOf("#"), b = row.lastIndexOf("#");
+    if(a < 0) return row;
+    if(mode === "full") return row.slice(0, a) + "#".repeat(b - a + 1) + row.slice(b + 1);
+    const h = hole(row); if(!h) return row;
+    return row.slice(0, a + rb) + ".".repeat(Math.max(0, h[1] - a - rb + 1)) + row.slice(h[1] + 1);
+  });
+}
+const battState = (low, mode) => ({...JSON.parse(JSON.stringify(low)), rows: battRows(low, mode)});
+const iconGroup = key => ICON_LINKS.find(g => g.includes(key)) || [key];
+let pfIconForce = false;                                // the editor preview always shows the pixel icons
+// Each screen: icons ({icon, dx}; pdx: the shift for the pixel icon, if its home differs), treatment bars ({bars: how many filled}) and text ({text, size, weight, cx, base}).
+// {long:true} is the state's long text, which scrolls or steps.
+const T = (text, size, cx, base) => ({text, size, weight:600, cx, base});
+const LAYOUTS = {
+  "Off": [],
+  "Turn On": [{icon:"logo"}, {icon:"battSmall"}, {bars:2}],
+  "Place in Garment": [{long:true}],
+  "Waiting for Device": [],
+  "Docked into Garment": [T("Ready", 21, 65.19, 28)],
+  "Start Treatment": [T("59:59", 29, 54.94, 31), {icon:"battSmall"}, {bars:2}],
+  // Same as Start Treatment, with a small "M" icon in the lower right where the bars were: under the battery, on the
+  // timer's baseline. No exported artwork, so it is always the live rebuild.
+  "Custom Treatment": [T("59:59", 29, 54.94, 31), {icon:"battSmall"}, {icon:"customM"}],
+  "Treatment Finished": [T("Finished", 21, 64.62, 28)],
+  "Battery Low": [{icon:"battOutline"}, T("30%", 24, 87.14, 29.5)],
+  "Charger Connected": [{icon:"battOutline", dx:-13, pdx:-9}, T("30%", 24, 71.14, 30), {icon:"bolt"}],
+  "Finished Charging": [{icon:"battFull"}, T("100%", 24, 85.59, 30)],
+};
+// The long text as HMI-Flow.html lays it out: Plus Jakarta Sans Medium, 9.4cqw of the 239-wide device
+// (1cqw = 2.39 px), centered on the 40 px height. Scroll: two copies loop right to left at SCROLL_PX px/s,
+// padding 2.5cqw before and 6.7cqw after. Step: the two halves, STEP_MS each. Whole-pixel moves only.
+const CQW = 239/100, SCROLL_PX = 40, STEP_MS = 1000, PAD_L = 2.5*CQW, PAD_R = 6.7*CQW;
+const LONG = {size:9.4*CQW, weight:500, cx:W/2, base:28.28};
+
+// ---- Fonts ----
+const DESIGN_FAMILY = "Plus Jakarta Sans", DESIGN_CAP = 0.745;  // cap height / font size
+const FONTS = [
+  ["Custom", ["Custom Pixel|Custom Pixel"]],
+  ["Sans", ["Plus Jakarta Sans","Inter","DM Sans","Manrope","Figtree","Outfit","Sora","Space Grotesk","Onest","Geist","IBM Plex Sans","Roboto","Rubik","Work Sans","Lexend","Archivo","Barlow"]],
+  ["Rounded", ["Nunito","Quicksand:300;400;500;600;700","Varela Round:400","M PLUS Rounded 1c:400;500;700"]],
+  ["Condensed", ["Barlow Condensed","Roboto Condensed","Archivo Narrow","Logisoso:500|Logisoso"]],
+  ["Mono", ["JetBrains Mono","IBM Plex Mono","Roboto Mono","Space Mono:400;700"]],
+  ["Pixel", ["Pixel Operator:400;700|Pixel Operator","Pixel Operator HB:400|Pixel Operator HB","Pixel Operator SC:400;700|Pixel Operator SC","Pixel Operator HB SC:400|Pixel Operator HB SC",
+    "Pixel Operator Mono:400;700|Pixel Operator Mono",
+    "Pixel Operator 8:400;700|Pixel Operator 8","Pixel Operator Mono 8:400;700|Pixel Operator Mono 8","BetterVCR:400|BetterVCR","WindyCity:500|WindyCity","Geist Pixel:400","Jersey 10:400","Jersey 15:400","Jersey 20:400","Jersey 25:400"]],
+  ["On this Mac", ["system-ui|SF Pro (system)","Helvetica Neue|Helvetica Neue","Avenir Next|Avenir Next","Menlo|Menlo"]],
+];
+// Pixel fonts are drawn on a grid of "font pixels"; this is how many font pixels make one em, read from each font
+// file (units per em ÷ the grid unit every outline corner sits on). They are only crisp when one font pixel covers
+// a whole number of display pixels, i.e. at sizes n × grid px. On 40 rows that leaves n = 1: one font pixel per pixel.
+//   Pixel Operator (HB, SC, HB SC, Mono) 1600/100 · Pixel Operator 8 (Mono 8) 800/100 · BetterVCR 1024/64 · WindyCity 1024/64 · Geist Pixel 1000/38 · Jersey 10 1400/75 · Jersey 15 1350/50 · Jersey 20 1292/38 · Jersey 25 1230/30
+// The Jersey number is the cap height in font pixels, so the family gives crisp text at 10, 15, 20 and 25 px caps.
+const PIXEL_GRID = {"Pixel Operator":16, "Pixel Operator HB":16, "Pixel Operator SC":16, "Pixel Operator HB SC":16, "Pixel Operator Mono":16, "Pixel Operator 8":8, "Pixel Operator Mono 8":8,
+  "BetterVCR":16, "WindyCity":16, "Geist Pixel":1000/38, "Jersey 10":1400/75, "Jersey 15":27, "Jersey 20":34, "Jersey 25":41};
+const fontList = FONTS.flatMap(([g, fs]) => fs.map(f => {
+  const [main, local] = f.split("|"); const [name, w] = main.split(":");
+  return {group:g, grid: PIXEL_GRID[name], name: local || name, css: name === "system-ui" ? "system-ui" : `"${name}", sans-serif`, google: !local, weights: w || "400;500;600;700"};
+}));
+const CUSTOM_FONT = Object.assign(fontList.find(f => f.name === "Custom Pixel"), {custom:true, css:'"Custom Pixel"', weights:"400"});
+$("hfont").innerHTML = FONTS.map(([g]) => `<optgroup label="${g}">` + fontList.filter(f => f.group === g)
+  .map(f => `<option value="${f.name}">${f.name}${f.name === DESIGN_FAMILY ? " (design)" : ""}</option>`).join("") + "</optgroup>").join("")
+  + `<option value="__other">Other…</option>`;
+const loadedFonts = new Set([DESIGN_FAMILY]);
+function ensureFont(f){                                 // add a Google Fonts stylesheet once
+  if(!f.google || loadedFonts.has(f.name)) return Promise.resolve();
+  loadedFonts.add(f.name);
+  const fam = f.name.replace(/ /g, "+");
+  const add = href => new Promise(res => { const l = document.createElement("link"); l.rel = "stylesheet"; l.href = href; l.onload = () => res(true); l.onerror = () => { l.remove(); res(false); }; document.head.appendChild(l); });
+  return add(`https://fonts.googleapis.com/css2?family=${fam}:wght@${f.weights}&display=swap`)
+    .then(ok => ok || add(`https://fonts.googleapis.com/css2?family=${fam}&display=swap`));   // fonts with fewer weights
+}
+function currentFont(){
+  const v = $("hfont").value;
+  if(v === "__other"){ const n = $("hfontOther").value.trim() || DESIGN_FAMILY; return {name:n, css:`"${n}", "${DESIGN_FAMILY}", sans-serif`, google:true, weights:"400;500;600;700"}; }
+  return fontList.find(f => f.name === v) || fontList[0];
+}
+const capCache = new Map();
+function capRatio(css, w){                              // cap height / font size, measured on "H"
+  if(css.includes('"Custom Pixel"')) return DESIGN_CAP;  // sized by Plus Jakarta Sans-equivalent px
+  const k = css + w; if(capCache.has(k)) return capCache.get(k);
+  const font = `${w} 100px ${css}`;
+  wctx.font = font; const r = wctx.measureText("H").actualBoundingBoxAscent / 100 || DESIGN_CAP;
+  capCache.set(k, r);
+  return r;
+}
+// ---- Bitmap font: fixed glyph bitmaps for outline fonts ----
+// Thresholding each letter wherever it lands in a word gives the same letter a different shape each time. Instead,
+// each character is rendered once per font and size, from a whole-pixel origin, and that bitmap is reused:
+//   heights: baseline, x-height, cap height, ascender and descender land on whole rows; small overshoots on round
+//            letters fold back onto those lines, so "n" and "x" are equally tall
+//   spacing: advances and kerning are rounded to whole pixels
+// Stems and curves are left as the outline draws them. (Snapping stems to one shared width was tried: it thinned
+// Plus Jakarta Sans and pinched the curves of its digits.)
+const bitmapOn = () => $("hbitmap").checked;
+const isPixelFont = font => Object.keys(PIXEL_GRID).some(n => font.includes(`"${n}"`));
+const GS = 16;                                          // glyph render resolution: samples per display pixel
+const gcan = document.createElement("canvas"), gctx = gcan.getContext("2d", {willReadFrequently:true});
+const metricCache = new Map(), glyphCache = new Map(), kernCache = new Map();
+function inkBox(font, ch){
+  gctx.font = font; const m = gctx.measureText(ch);
+  return {l:m.actualBoundingBoxLeft, r:m.actualBoundingBoxRight, a:m.actualBoundingBoxAscent, d:m.actualBoundingBoxDescent, w:m.width};
+}
+// One glyph at GS×, origin on a whole pixel. Returns a coverage sampler in display px (x right, y up from the baseline).
+function renderGlyph(font, ch, sx = 1){
+  const b0 = inkBox(font, ch), b = {l:b0.l*sx, r:b0.r*sx, a:b0.a, d:b0.d, w:b0.w*sx};
+  const padL = Math.ceil(Math.max(0, b.l)) + 2, asc = Math.ceil(Math.max(0, b.a)) + 2, desc = Math.ceil(Math.max(0, b.d)) + 2;
+  const wpx = padL + Math.ceil(Math.max(b.r, b.w, 0)) + 2, hpx = asc + desc;
+  gcan.width = wpx*GS; gcan.height = hpx*GS;
+  gctx.setTransform(GS*sx,0,0,GS,0,0); gctx.fillStyle = "#000"; gctx.fillRect(0,0,wpx/sx,hpx);
+  gctx.font = font; gctx.fillStyle = "#fff"; gctx.textBaseline = "alphabetic"; gctx.textAlign = "left";
+  gctx.fillText(ch, padL/sx, asc);
+  const d = gctx.getImageData(0,0,gcan.width,gcan.height).data, W2 = gcan.width, H2 = gcan.height;
+  const at = (x, y) => { const X = Math.floor((x + padL)*GS), Y = Math.floor((asc - y)*GS); return X<0||Y<0||X>=W2||Y>=H2 ? 0 : d[(Y*W2+X)*4]/255; };
+  return {at, b};
+}
+// Piecewise-linear maps between source (outline) and target (pixel) coordinates; slope 1 outside the knots
+function interp(k, a, b, v){
+  if(!k.length) return v;
+  if(v <= k[0][a]) return k[0][b] + (v - k[0][a]);
+  for(let i = 1; i < k.length; i++){
+    const p = k[i-1], q = k[i];
+    if(v <= q[a]){ const span = q[a] - p[a]; return span <= 1e-9 ? (p[b] + q[b])/2 : p[b] + (v - p[a]) / span * (q[b] - p[b]); }
+  }
+  const l = k[k.length-1]; return l[b] + (v - l[a]);
+}
+function addKnots(list, add){                           // keep sources increasing and targets non-decreasing
+  const k = [...list, ...add].sort((p, q) => p[0] - q[0]);
+  const out = [];
+  for(const [s, d] of k){
+    const prev = out[out.length-1];
+    if(prev && s - prev[0] < 0.2) continue;             // too close to an existing knot
+    out.push([s, prev ? Math.max(d, prev[1]) : d]);
+  }
+  return out;
+}
+// Font-wide metrics at this size: the row each height zone lands on
+function fontMetrics(font){
+  if(metricCache.has(font)) return metricCache.get(font);
+  const H = inkBox(font,"H"), xx = inkBox(font,"x"), o = inkBox(font,"o"), O = inkBox(font,"O"), d = inkBox(font,"d"), p = inkBox(font,"p"), eight = inkBox(font,"8");
+  const rx = Math.round(xx.a), rc = Math.max(rx + 1, Math.round(H.a));
+  let zones = [[-p.d, Math.round(-p.d)], [-Math.max(0, o.d), 0], [0, 0],
+    [xx.a, rx], [xx.a + Math.max(0, o.a - xx.a), rx], [H.a, rc], [H.a + Math.max(0, O.a - H.a), rc]];
+  if(Math.abs(eight.a - H.a) > 0.25) zones.push([eight.a, Math.round(eight.a)]);
+  if(d.a - H.a > 0.25) zones.push([d.a, Math.max(rc, Math.round(d.a))]);
+  zones = addKnots([], zones);
+  const m = {zones};
+  metricCache.set(font, m); return m;
+}
+// One character's bitmap; cached per font, size, character and threshold
+function glyphBitmap(font, ch){
+  const thr = +$("thresh").value, key = font + "|" + ch + "|" + thr;
+  if(!glyphCache.has(key)) glyphCache.set(key, fitGlyph(font, ch, 1, thr));
+  return glyphCache.get(key);
+}
+// dxs: sub-pixel shifts to try; the crispest result wins (fewest half-covered pixels), so thin strokes land on
+// whole columns instead of straddling two and vanishing. The generator uses this; live text keeps one origin.
+function fitGlyph(font, ch, sx, thr, dxs = [0]){
+  const M = fontMetrics(font), {at, b} = renderGlyph(font, ch, sx);
+  const adv = Math.round(b.w), xmin = -b.l, xmax = b.r, ytop = b.a, ybot = -b.d;
+  if(xmax - xmin <= 0 || ytop - ybot <= 0) return {adv, w:0, h:0, bits:null, inkL:null};
+  const xk = [], yKnots = M.zones;                       // x: unchanged; y: height zones
+  // Sample each target pixel (4×4 points) back through the inverse maps
+  const tx0 = Math.floor(interp(xk, 0, 1, xmin)) - 1, tx1 = Math.ceil(interp(xk, 0, 1, xmax)) + 1;
+  const ty0 = Math.floor(interp(yKnots, 0, 1, ybot)) - 1, ty1 = Math.ceil(interp(yKnots, 0, 1, ytop)) + 1;
+  const w = tx1 - tx0, h = ty1 - ty0;
+  let best = null;
+  for(const dx of dxs){
+    const cov = new Float32Array(w*h); let blur = 0;
+    for(let r = 0; r < h; r++) for(let c = 0; c < w; c++){
+      let sum = 0;
+      for(let i = 0; i < 4; i++) for(let j = 0; j < 4; j++)
+        sum += at(interp(xk, 1, 0, tx0 + c + (i + 0.5)/4) - dx, interp(yKnots, 1, 0, ty0 + r + (j + 0.5)/4));
+      cov[r*w + c] = sum/16; blur += Math.min(sum/16, 1 - sum/16);
+    }
+    if(!best || blur < best.blur - 1e-6) best = {cov, blur};
+  }
+  const bits = new Uint8Array(w*h); let inkL = Infinity, inkR = -Infinity;
+  for(let r = 0; r < h; r++) for(let c = 0; c < w; c++)
+    if(best.cov[r*w + c]*255 >= thr){ bits[r*w + c] = 1; inkL = Math.min(inkL, tx0 + c); inkR = Math.max(inkR, tx0 + c + 1); }
+  return {adv, tx0, ty0, w, h, bits, inkL: isFinite(inkL) ? inkL : null, inkR};
+}
+function pairKern(font, a, b){
+  const key = font + "|" + a + b; if(kernCache.has(key)) return kernCache.get(key);
+  gctx.font = font; const k = Math.round(gctx.measureText(a + b).width - gctx.measureText(a).width - gctx.measureText(b).width);
+  kernCache.set(key, k); return k;
+}
+// Letter spacing (display px) for the HMI text: added between letters in every layout path below. Text with no
+// letters (the timer, battery percentages) keeps its natural spacing.
+const letterSp = text => { const v = parseFloat($("hspace").value); return isFinite(v) && /\p{L}/u.test(text) ? v : 0; };
+function spaceLayout(L, sp){
+  if(!sp || L.glyphs.length < 2) return L;
+  let minX = Infinity, maxX = -Infinity;
+  const glyphs = L.glyphs.map(([pen, g], i) => {
+    const p = pen + i*sp;
+    if(g.inkL !== null){ minX = Math.min(minX, p + g.inkL); maxX = Math.max(maxX, p + g.inkR); }
+    return [p, g];
+  });
+  return {glyphs, width: L.width + sp*(L.glyphs.length - 1), minX: isFinite(minX) ? minX : 0, maxX: isFinite(maxX) ? maxX : 0};
+}
+function fillSpaced(x, text, left, base, sp = letterSp(text)){   // fillText with letter spacing; keeps the font's kerning
+  if(!sp) return x.fillText(text, left, base);
+  let pre = "";
+  [...text].forEach((ch, i) => { x.fillText(ch, left + x.measureText(pre).width + i*sp, base); pre += ch; });
+}
+const spacedWidth = (x, text, sp = letterSp(text)) => x.measureText(text).width + sp * Math.max(0, [...text].length - 1);
+const layoutString = (font, text) => spaceLayout(layoutStringRaw(font, text), letterSp(text));
+function layoutStringRaw(font, text){
+  if(isCustom(font)) return customLayout(font, text);
+  const glyphs = []; let pen = 0, minX = Infinity, maxX = -Infinity;
+  [...text].forEach((ch, i, arr) => {
+    if(i) pen += pairKern(font, arr[i-1], ch);
+    const g = glyphBitmap(font, ch); glyphs.push([pen, g]);
+    if(g.inkL !== null){ minX = Math.min(minX, pen + g.inkL); maxX = Math.max(maxX, pen + g.inkR); }
+    pen += g.adv;
+  });
+  return {glyphs, width: pen, minX: isFinite(minX) ? minX : 0, maxX: isFinite(maxX) ? maxX : 0};
+}
+function drawBitmapString(x, L, left, base){            // whole-pixel rects, one per horizontal run
+  x.fillStyle = "#fff";
+  for(const [pen, g] of L.glyphs){
+    if(!g.bits) continue;
+    for(let r = 0; r < g.h; r++){
+      const top = base - (g.ty0 + r) - 1;
+      for(let c = 0; c < g.w;){
+        if(!g.bits[r*g.w + c]){ c++; continue; }
+        let e = c; while(e < g.w && g.bits[r*g.w + e]) e++;
+        x.fillRect(left + pen + g.tx0 + c, top, e - c, 1); c = e;
+      }
+    }
+  }
+}
+
+// ---- Custom Pixel: our own bitmap font, drawn in the Pixel font editor ----
+// One size, 21 px caps (odd, so E, 8 and ":" have a middle row; Medium 15 and Small 7 were dropped as unused, and
+// any saved copies of them are ignored). Each glyph is a grid of rows, top to bottom, "#" = lit, as wide as its
+// advance and as tall as the size's ascent + descent; the baseline sits under row `asc`.
+const PF_SIZES = [{key:"L", label:"Font", cap:21, stem:3}];
+const pfPrune = f => { if(f && f.sizes) for(const k of Object.keys(f.sizes)) if(!PF_SIZES.some(S => S.key === k)) delete f.sizes[k]; return f; };
+const PF_CHARS = Array.from({length:95}, (_, i) => String.fromCharCode(32 + i));
+const isCustom = font => font.includes('"Custom Pixel"');
+let pf = null, pfBase = null, pfVer = 0;               // the font, the version "Revert" goes back to, an edit counter
+const pfGlyphCache = new Map();
+const pfEqPx = S => S.cap / DESIGN_CAP;                 // the Plus Jakarta Sans size with the same cap height
+function pfSizeFor(px){                                 // nearest size by cap height
+  const cap = px * DESIGN_CAP; let best = PF_SIZES[0];
+  for(const S of PF_SIZES) if(Math.abs(S.cap - cap) < Math.abs(best.cap - cap)) best = S;
+  return best;
+}
+function pfGlyph(key, ch){                              // stored rows → the bitmap drawBitmapString draws
+  const ck = key + "|" + ch + "|" + pfVer; if(pfGlyphCache.has(ck)) return pfGlyphCache.get(ck);
+  const S = pf && pf.sizes[key], gl = S && (S.glyphs[ch] || S.glyphs["?"]);
+  let g = {adv:0, w:0, h:0, bits:null, inkL:null};
+  if(gl){
+    const h = gl.rows.length, w = gl.adv, bits = new Uint8Array(w*h); let inkL = Infinity, inkR = -Infinity;
+    gl.rows.forEach((row, i) => { const r = h - 1 - i; for(let c = 0; c < w; c++) if(row[c] === "#"){ bits[r*w + c] = 1; inkL = Math.min(inkL, c); inkR = Math.max(inkR, c + 1); } });
+    g = {adv:gl.adv, tx0:0, ty0:-S.desc, w, h, bits, inkL: isFinite(inkL) ? inkL : null, inkR};
+  }
+  pfGlyphCache.set(ck, g); return g;
+}
+function pfLayout(key, text){
+  const glyphs = []; let pen = 0, minX = Infinity, maxX = -Infinity;
+  for(const ch of text){
+    const g = pfGlyph(key, ch); glyphs.push([pen, g]);
+    if(g.inkL !== null){ minX = Math.min(minX, pen + g.inkL); maxX = Math.max(maxX, pen + g.inkR); }
+    pen += g.adv;
+  }
+  return {glyphs, width: pen, minX: isFinite(minX) ? minX : 0, maxX: isFinite(maxX) ? maxX : 0};
+}
+const customLayout = (font, text) => pfLayout(pfSizeFor(parseFloat((font.match(/([\d.]+)px/) || [0, 20])[1])).key, text);
+
+// First pass from Plus Jakarta Sans. Per size: the weight whose "l" comes out at the target stem width, heights
+// fitted to whole rows (glyph bitmaps above), letters narrowed by `sx` for the wide pixels, equal-width digits.
+const PF_DX = [-0.375, -0.25, -0.125, 0, 0.125, 0.25, 0.375, 0.5];   // sub-pixel shifts the generator tries per glyph
+const pjsFont = (cap, w) => `${w} ${(cap / capRatio(`"${DESIGN_FAMILY}"`, w)).toFixed(3)}px "${DESIGN_FAMILY}"`;
+function stemOf(g){                                     // ink run across the middle of a glyph (the "l")
+  if(!g.bits) return 0; const r = Math.floor(g.h/2); let n = 0;
+  for(let c = 0; c < g.w; c++) n += g.bits[r*g.w + c]; return n;
+}
+async function pfGenerate(sx){
+  await Promise.all([400, 500, 600, 700, 800].map(w => document.fonts.load(`${w} 20px "${DESIGN_FAMILY}"`).catch(() => {})));
+  capCache.clear(); metricCache.clear();
+  const out = {name:"Custom Pixel", source:"Plus Jakarta Sans", narrow:+sx.toFixed(4), sizes:{}};
+  for(const S of PF_SIZES){
+    let best = null;
+    for(const w of [600, 500, 700, 400, 800]){
+      const score = Math.abs(stemOf(fitGlyph(pjsFont(S.cap, w), "l", sx, 128, PF_DX)) - S.stem);
+      if(!best || score < best.score) best = {w, score};
+      if(score === 0) break;
+    }
+    out.sizes[S.key] = pfGenSize(S, best.w, sx);
+    await new Promise(r => setTimeout(r));              // let the page breathe between sizes
+  }
+  return out;
+}
+function pfGenSize(S, weight, sx){
+  const font = pjsFont(S.cap, weight), raw = {};
+  let asc = S.cap, desc = 0;
+  for(const ch of PF_CHARS){
+    const g = raw[ch] = fitGlyph(font, ch, sx, 128, PF_DX);
+    if(g.bits) for(let r = 0; r < g.h; r++) for(let c = 0; c < g.w; c++) if(g.bits[r*g.w + c]){ asc = Math.max(asc, g.ty0 + r + 1); desc = Math.max(desc, -(g.ty0 + r)); }
+  }
+  const digits = "0123456789", dAdv = Math.max(...[...digits].map(ch => raw[ch].adv));   // tabular figures for the timer
+  const glyphs = {};
+  for(const ch of PF_CHARS){
+    const g = raw[ch]; let adv = Math.max(1, g.adv), shift = 0;
+    if(g.inkL !== null){
+      if(digits.includes(ch)){ adv = dAdv; shift = Math.round((dAdv - (g.inkR - g.inkL))/2) - g.inkL; }
+      else { if(g.inkL < 0){ shift = -g.inkL; adv += shift; } if(g.inkR + shift > adv) adv = g.inkR + shift; }
+    }
+    const rows = [];
+    for(let y = asc - 1; y >= -desc; y--){
+      let row = "";
+      for(let c = 0; c < adv; c++){
+        const sc = c - shift - (g.tx0 || 0), sr = y - (g.ty0 || 0);
+        row += g.bits && sc >= 0 && sc < g.w && sr >= 0 && sr < g.h && g.bits[sr*g.w + sc] ? "#" : ".";
+      }
+      rows.push(row);
+    }
+    glyphs[ch] = {adv, rows};
+  }
+  return {cap:S.cap, xh: Math.round(inkBox(font, "x").a), asc, desc, weight, glyphs};
+}
+const useBitmap = (font, hint) => isCustom(font) || (hint && bitmapOn() && !isPixelFont(font));
+function drawText(x, font, text, cx, base, hint = true){   // centered on the ink, on the baseline
+  if(useBitmap(font, hint)){
+    const L = layoutString(font, text);
+    return drawBitmapString(x, L, Math.round(cx - (L.minX + L.maxX)/2), Math.round(base));
+  }
+  x.font = font; x.fillStyle = "#fff"; x.textBaseline = "alphabetic"; x.textAlign = "left";
+  const m = x.measureText(text), sp = letterSp(text) * Math.max(0, [...text].length - 1);
+  let left = cx - (m.actualBoundingBoxRight - m.actualBoundingBoxLeft + sp)/2;
+  if(snapOn()){ left = Math.round(left); base = Math.round(base); }   // glyph grids start on a pixel boundary
+  fillSpaced(x, text, left, base);
+}
+function drawVectorIcon(x, name, dx = 0){ x.save(); x.translate(-SCREEN.x + dx, -SCREEN.y); x.fillStyle = "#fff"; x.fill(ICONS[name]); x.restore(); }
+const pixIcon = name => (pfIconForce || $("hpicons").checked) && pf && pf.icons && pf.icons[name];
+function drawPixelIcon(x, ic, dx = 0){
+  x.save(); x.fillStyle = "#fff";
+  ic.rows.forEach((row, r) => { for(let c = 0; c < row.length; c++) if(row[c] === "#") x.fillRect(ic.x + dx + c, ic.y + r, 1, 1); });
+  x.restore();
+}
+function drawIcon(x, name, dx = 0, pdx = dx){
+  const ic = pixIcon(name) || (!ICONS[name] && pf && pf.icons && pf.icons[name]);   // pixel-only icons have no vector
+  if(!ic && !ICONS[name]) return;
+  ic ? drawPixelIcon(x, ic, Math.round(pdx)) : drawVectorIcon(x, name, dx);
+}
+function drawBars(x, filled){                           // three 4×14 pills, 8 px apart, 1 px stroke
+  const on = pixIcon("barOn"), off = pixIcon("barOff");
+  if(on && off){ for(let i = 0; i < 3; i++) drawPixelIcon(x, i < filled ? on : off, i*BAR_STEP); return; }
+  x.save(); x.strokeStyle = x.fillStyle = "#fff"; x.lineWidth = 1;
+  for(let i = 0; i < 3; i++){ rr(x, 104.594 + i*8, 20.5, 4, 14, 2); if(i < filled) x.fill(); x.stroke(); }
+  x.restore();
+}
+
+// ---- Screens, their text, and animation ----
+// Each screen's text is a list of items {text, size (px, in the current font), cx (ink center), base (baseline),
+// weight, long?}. Untouched screens use the design; edited ones are saved in this browser.
+let textMode = store("hmi-flow-textmode") === "step" ? "step" : "scroll";   // shared with HMI-Flow.html
+let anim = null, current = null;
+let edits = {}; try{ edits = JSON.parse(store("dsim-edits") || "{}") || {}; }catch(e){ edits = {}; }
+if(edits["Custom Treatment"]) edits["Custom Treatment"] = edits["Custom Treatment"].filter(it => it.text !== "M");   // the M is an icon now
+const saveEdits = () => store("dsim-edits", JSON.stringify(edits));
+const r1 = v => Math.round(v*10)/10;
+// The design's text for a screen (Plus Jakarta Sans sizes); `cap` converts sizes to the current font's cap height
+function designItems(st, convert){
+  const k = convert && $("hcap").checked ? DESIGN_CAP / capRatio(currentFont().css, 600) : 1;
+  const items = (LAYOUTS[st.name] || []).filter(it => it.text).map(it => ({...it}));
+  if(st.text) items.push({...LONG, text:st.text, long:true});
+  return items.map(it => ({...it, size: convert ? r1(it.size * k) : it.size}));
+}
+const itemsFor = st => edits[st.name] || designItems(st, true);
+const editable = st => edits[st.name] || (edits[st.name] = designItems(st, true));
+// Compare mode: four displays. Column 1 is the main font (and edits the screen's sizes); columns 2 to 4 have
+// their own font and a size scale. Column sizes follow the main ones, converted to the column font's cap height.
+// View: "single", "compare" (four fonts) or "all" (every screen in the main font)
+let viewMode = ["single", "compare", "all"].includes(store("dsim-view")) ? store("dsim-view") : store("dsim-compare") === "1" ? "compare" : "single";
+const cols = [0,1,2,3].map(i => ({i, main:i === 0, fb:new Uint8Array(W*H), canvas:null,
+  font: [store(`dsim-c${i}-font`)].find(n => fontList.some(f => f.name === n)) || ["", "Inter", "Space Grotesk", "WindyCity"][i], scale: +store(`dsim-c${i}-scale`) || 1}));
+const compareActive = () => viewMode === "compare" && !!current && !$("draw").checked;
+const allActive = () => viewMode === "all" && !!current && !$("draw").checked;
+let allCards = [];                                      // All screens: {st, im, fb, canvas, el} per HMI screen
+const colFont = col => !col || col.main ? currentFont() : (fontList.find(f => f.name === col.font) || fontList[0]);
+function colK(col){                                     // main sizes → this column's sizes
+  if(!col || col.main) return 1;
+  const cap = $("hcap").checked ? capRatio(currentFont().css, 600) / capRatio(colFont(col).css, 600) : 1;
+  return cap * col.scale;
+}
+// Pixel snap: pixel fonts go to their nearest crisp size (n × grid px), other fonts to whole px — what a firmware
+// bitmap font does. Positions are rounded to whole pixels in drawText.
+const snapOn = () => $("hsnap").checked;
+function snapSize(f, size){
+  if(f.custom) return pfEqPx(pfSizeFor(size));
+  if(!snapOn()) return size;
+  return f.grid ? Math.max(1, Math.round(size / f.grid)) * f.grid : Math.max(1, Math.round(size));
+}
+function fontFor(item, original, col, k = 1){
+  if(original) return `${item.weight} ${item.size}px "${DESIGN_FAMILY}", sans-serif`;
+  const f = colFont(col), single = !f.weights.includes(";");   // one-weight fonts: never fake a bold
+  // Multi-weight pixel fonts (Pixel Operator) have a drawn Bold on the same grid, so weight choice is kept
+  const w = single ? +f.weights : $("hweight").value === "design" ? item.weight : +$("hweight").value;
+  return `${w} ${+snapSize(f, item.size*k).toFixed(3)}px ${f.css}`;
+}
+function stopAnim(){ if(anim){ cancelAnimationFrame(anim.raf); anim = null; } }
+function setPressed(name){
+  document.querySelectorAll("#states button").forEach(b => b.setAttribute("aria-pressed", b.dataset.n === name));
+  if(name === null){ stopAnim(); current = null; }      // any other content stops an HMI screen
+  renderEditor();
+}
+function splitText(t){
+  const sp = [...t.matchAll(/ /g)].map(m=>m.index);
+  if(!sp.length) return [t, t];
+  const at = sp.reduce((b,x)=>Math.abs(x - t.length/2) < Math.abs(b - t.length/2) ? x : b, sp[0]);
+  return [t.slice(0, at), t.slice(at+1)];
+}
+// The frame at time t (ms): [key, draw]. The key changes only when the panel's pixels would.
+const caps = t => $("hcaps").checked ? t.toUpperCase() : t;   // All caps: display only, edits keep their case
+// Text-only screens: the text's lit pixels (not its baseline) are centered on the 40 rows. Long text is centered as
+// a whole string, so it doesn't jump as letters with descenders scroll by.
+const centersText = (st, original) => !original && $("hvc").checked && !(LAYOUTS[st.name] || []).some(it => it.icon || it.bars !== undefined);
+const inkCache = new Map();
+function inkRows(font, text, base, hint){               // [top, bottom] lit rows of the whole string at this baseline
+  const key = [font, text, base, hint, bitmapOn(), snapOn(), $("thresh").value, pfVer, letterSp(text)].join("|");
+  if(inkCache.has(key)) return inkCache.get(key);
+  const bitmap = useBitmap(font, hint), L = bitmap ? layoutString(font, text) : null;
+  wctx.font = font;
+  const w = bitmap ? L.width : spacedWidth(wctx, text), sx = Math.min(1, (W - 4) / Math.max(1, w));   // squeeze to fit: rows are unchanged
+  const buf = new Uint8Array(W*H);
+  rasterize(x => {
+    x.scale(sx, 1);
+    if(bitmap) drawBitmapString(x, L, Math.round(2 / sx), Math.round(base));
+    else { x.font = font; x.fillStyle = "#fff"; x.textBaseline = "alphabetic"; x.textAlign = "left"; fillSpaced(x, text, 2 / sx, snapOn() ? Math.round(base) : base); }
+  }, buf);
+  let y0 = H, y1 = -1;
+  for(let y = 0; y < H; y++) for(let i = 0; i < W; i++) if(buf[y*W + i]){ y0 = Math.min(y0, y); y1 = Math.max(y1, y); break; }
+  const r = y1 < 0 ? null : [y0, y1]; inkCache.set(key, r); return r;
+}
+const centerShift = (font, text, base, hint) => { const r = inkRows(font, text, base, hint); return r ? Math.floor((H - (r[1] - r[0] + 1)) / 2) - r[0] : 0; };
+function frame(st, im, t, col){
+  const original = showOriginal(st), layout = LAYOUTS[st.name] || [], k = colK(col), center = centersText(st, original);
+  const texts = original ? designItems(st, false).filter(it => it.long) : itemsFor(st);
+  const statics = texts.filter(it => !it.long && it.text).map(it => {
+    const font = fontFor(it, false, col, k), text = caps(it.text);
+    return {font, text, cx:it.cx, base: center ? it.base + centerShift(font, text, it.base, true) : it.base};
+  });
+  const long = texts.find(it => it.long && it.text);
+  const base = x => {
+    if(original) x.drawImage(im, -SCREEN.x, -SCREEN.y);
+    else for(const it of layout){
+      if(it.icon) drawIcon(x, it.icon, it.dx, it.pdx);
+      else if(it.bars !== undefined) drawBars(x, it.bars);
+    }
+    for(const it of statics) drawText(x, it.font, it.text, it.cx, it.base);
+  };
+  if(!long) return ["static", base];
+  const font = fontFor(long, original, col, k), lbase = center ? long.base + centerShift(font, caps(long.text), long.base, !original) : long.base;
+  if(textMode === "step"){
+    const half = caps(splitText(long.text)[Math.floor(t / STEP_MS) % 2]);
+    return [half, x => { base(x); drawText(x, font, half, long.cx, lbase, !original); }];
+  }
+  const bitmap = useBitmap(font, !original), L = bitmap ? layoutString(font, caps(long.text)) : null;
+  wctx.font = font;
+  const span = Math.round(PAD_L + (bitmap ? L.width : spacedWidth(wctx, caps(long.text))) + PAD_R);   // one copy, padding included
+  const off = Math.floor(t * SCROLL_PX / 1000) % span;
+  return [off, x => { base(x);
+    const y = snapOn() || bitmap ? Math.round(lbase) : lbase, pad = snapOn() || bitmap ? Math.round(PAD_L) : PAD_L;
+    if(bitmap){ for(const s of [0, span]) drawBitmapString(x, L, pad + s - off, y); return; }
+    x.font = font; x.fillStyle = "#fff"; x.textBaseline = "alphabetic"; x.textAlign = "left";
+    for(const s of [0, span]) fillSpaced(x, caps(long.text), pad + s - off, y); }];
+}
+const showOriginal = st => $("horig").checked && !(st && st.live);   // live-only screens have no exported artwork
+const hasLong = st => (showOriginal(st) ? designItems(st, false) : itemsFor(st)).some(it => it.long && it.text);
+function showState(st){
+  stopAnim(); current = st;
+  const im = new Image(), run = anim = {raf:0, keys:[], t0:performance.now(), tick:null};
+  const start = () => {
+    if(anim !== run) return;
+    capCache.clear(); metricCache.clear(); glyphCache.clear(); kernCache.clear(); inkCache.clear();   // drop measurements taken while a fallback font stood in
+    run.tick = now => {
+      if(anim !== run) return;
+      const all = allActive(), targets = all ? allCards.map(c => ({st:c.st, im:c.im, fb:c.fb}))
+        : (compareActive() ? cols : [{main:true, fb}]).map(col => ({st, im, fb:col.fb, col}));
+      const dirty = new Set();
+      targets.forEach((tg, i) => {
+        const [key, draw] = frame(tg.st, tg.im, now - run.t0, tg.col);
+        if(key !== run.keys[i]){ run.keys[i] = key; rasterize(draw, tg.fb); dirty.add(i); }
+      });
+      if(dirty.size) render(all ? dirty : undefined);
+      cancelAnimationFrame(run.raf);
+      if(targets.some(tg => hasLong(tg.st))) run.raf = requestAnimationFrame(run.tick);   // only long text animates
+    };
+    run.tick(performance.now());                        // first frame right away
+    renderEditor();
+  };
+  const families = compareActive() ? cols.map(colFont) : [currentFont()];
+  const weights = $("hweight").value === "design" ? [600, 500] : [+$("hweight").value];   // the faces this screen draws with
+  const fonts = [...families.flatMap(f => weights.map(w => `${w} 20px ${f.css}`)), `600 20px "${DESIGN_FAMILY}"`, `500 20px "${DESIGN_FAMILY}"`];
+  const ready = [...families.map(ensureFont), new Promise(r => { im.onload = im.onerror = r; im.src = st.img; })];
+  Promise.all(ready).then(() => Promise.all(fonts.map(f => document.fonts.load(f).catch(()=>{})))).then(start, start);
+  setPressed(st.name);
+}
+function redraw(){ if(anim && anim.tick){ anim.keys = []; anim.tick(performance.now()); } }
+document.fonts && document.fonts.addEventListener("loadingdone", () => { capCache.clear(); metricCache.clear(); glyphCache.clear(); kernCache.clear(); inkCache.clear(); redraw(); syncSizes(); });
+
+// ---- Text editor for the current screen ----
+const esc = s => String(s).replace(/&/g,"&amp;").replace(/"/g,"&quot;").replace(/</g,"&lt;");
+function renderEditor(){
+  const st = current, box = $("textItems");
+  $("textmode").hidden = !(st && hasLong(st));
+  $("textmode").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", b.dataset.m === textMode));
+  $("animNote").textContent = textMode === "step" ? `Steps between two halves, ${STEP_MS} ms each.` : `Scrolls ${SCROLL_PX} px/s, moving 1 pixel at a time.`;
+  $("editor").hidden = !st;
+  if(!st) return;
+  const orig = showOriginal(st);
+  $("editor").disabled = orig;
+  const items = itemsFor(st), vc = centersText(st, false);
+  box.innerHTML = items.length ? items.map((it, i) => `
+    <div class="titem" data-i="${i}">
+      <input type="text" data-f="text" value="${esc(it.text)}" aria-label="Text ${i+1}">
+      <label class="num">Size<input type="number" data-f="size" value="${r1(it.size)}" min="4" max="80" step="0.5" aria-label="Font size in px"></label>
+      <label class="num" ${it.long ? 'title="Long text scrolls or steps across the whole width"' : ""}>X<input type="number" data-f="cx" value="${r1(it.cx)}" step="0.5" ${it.long ? "disabled" : ""} aria-label="Center X in px"></label>
+      <label class="num" ${vc ? 'title="Centered on the screen by its pixels (Center text vertically is on)"' : ""}>Y<input type="number" data-f="base" value="${r1(it.base)}" step="0.5" ${vc ? "disabled" : ""} aria-label="Baseline Y in px"></label>
+      <button class="icon-btn" data-del aria-label="Remove this text" title="Remove">×</button>
+    </div>`).join("")
+    : `<p class="note">${st.name === "Turn On" ? "Logo and icons only; the Dayspring wordmark keeps its own letterforms." : "No text on this screen."}</p>`;
+  $("resetScreen").disabled = !edits[st.name];
+  syncSizes();
+  $("editNote").textContent = orig ? "Showing the original artwork. Turn off Original artwork to edit."
+    : ($("horig").checked && st.live ? "This screen has no exported artwork, so it shows the live rebuild. " : "") + "Size is in px in the current font. X is the text's center and Y its baseline, in display pixels (128 × 40)."
+      + (snapOn() ? " Pixel snap rounds what's drawn to whole pixels; pixel fonts draw at 1 font pixel per display pixel." : "");
+}
+// Size boxes beside the font pickers: the size of the screen's main (first) text. Main: rescales every text on
+// the screen by the same factor. Columns 2 and 3: sets that column's scale.
+const mainItem = st => itemsFor(st).find(it => it.text);
+function syncSizes(){
+  const p = current && !showOriginal(current) ? mainItem(current) : null;
+  const set = (el, v) => { el.disabled = !p; if(el !== document.activeElement) el.value = p ? r1(v) : ""; };
+  set($("hsize"), p && snapSize(currentFont(), p.size));
+  cols.forEach(c => c.size && set(c.size, p && snapSize(colFont(c), p.size * colK(c))));
+}
+function setMainSize(v){
+  if(!current || !isFinite(v) || v <= 0) return;
+  const items = editable(current), p = items.find(it => it.text); if(!p) return;
+  const k = v / p.size;
+  items.forEach(it => it.size = it === p ? v : r1(it.size * k));
+  saveEdits(); redraw(); renderEditor();
+}
+$("hsize").addEventListener("input", e => setMainSize(parseFloat(e.target.value)));
+if(store("dsim-hspace") !== null) $("hspace").value = store("dsim-hspace");
+$("hspace").addEventListener("input", () => { store("dsim-hspace", $("hspace").value); redraw(); });
+$("textItems").addEventListener("input", e => {
+  const row = e.target.closest(".titem"), f = e.target.dataset.f; if(!row || !f || !current) return;
+  const it = editable(current)[+row.dataset.i];
+  if(f === "text") it.text = e.target.value;
+  else { const v = parseFloat(e.target.value); if(!isFinite(v)) return; it[f] = f === "size" ? Math.max(1, v) : v; }
+  saveEdits(); $("resetScreen").disabled = false;
+  if(f === "text"){ document.fonts.load(fontFor(it), it.text).then(redraw, redraw); renderLongPicker(); } else redraw();
+  syncSizes();
+});
+function renderLongPicker(){ $("textmode").hidden = !(current && hasLong(current)); }
+$("textItems").addEventListener("click", e => {
+  const b = e.target.closest("[data-del]"); if(!b || !current) return;
+  editable(current).splice(+b.closest(".titem").dataset.i, 1);
+  saveEdits(); showState(current);
+});
+$("addText").onclick = () => {
+  if(!current) return;
+  const items = editable(current), k = $("hcap").checked ? DESIGN_CAP / capRatio(currentFont().css, 600) : 1;
+  items.push({text:"Text", size:r1(16*k), weight:600, cx:64, base:26});
+  saveEdits(); showState(current);
+  setTimeout(() => { const ins = $("textItems").querySelectorAll('input[data-f="text"]'); const el = ins[ins.length-1]; if(el){ el.focus(); el.select(); } });
+};
+$("resetScreen").onclick = () => { if(current){ delete edits[current.name]; saveEdits(); showState(current); } };
+$("textmode").onclick = e => {
+  const b = e.target.closest("button"); if(!b) return;
+  textMode = b.dataset.m; store("hmi-flow-textmode", textMode);
+  if(current) showState(current);
+};
+
+// ---- Font controls (remembered in this browser) ----
+// Sizes are px in the current font. With Match cap height on, switching fonts rescales every edited size so
+// capitals stay as tall; untouched screens follow the design at the new font's cap height.
+let sizeFam = store("dsim-sizefam") || currentFont().css;
+async function fontChanged(){
+  const next = currentFont();
+  await ensureFont(next);
+  await Promise.all([`600 20px ${sizeFam}`, `600 20px ${next.css}`].map(f => document.fonts.load(f).catch(()=>{})));
+  capCache.clear();
+  if($("hcap").checked && sizeFam !== next.css){
+    const k = capRatio(sizeFam, 600) / capRatio(next.css, 600);
+    for(const name in edits) edits[name].forEach(it => it.size = r1(it.size * k));
+    saveEdits();
+  }
+  sizeFam = next.css; store("dsim-sizefam", sizeFam);
+  if(current) showState(current);
+}
+const refresh = () => { if(current) showState(current); };
+[["hfont","dsim-hfont"],["hweight","dsim-hweight"],["hfontOther","dsim-hfontother"]].forEach(([id,key]) => {
+  const v = store(key); if(v !== null && v !== "") $(id).value = v;
+  if(!$(id).value) $(id).selectedIndex = 0;
+  $(id).addEventListener("change", () => { store(key, $(id).value); id === "hweight" ? refresh() : fontChanged(); });
+});
+[["hcap","dsim-hcap"],["horig","dsim-horig"],["hcaps","dsim-hcaps"],["hsnap","dsim-hsnap"],["hbitmap","dsim-hbitmap"],["hpicons","dsim-hpicons"],["hvc","dsim-hvc"]].forEach(([id,key]) => {
+  const v = store(key); if(v !== null) $(id).checked = v === "1";
+  $(id).addEventListener("change", () => { store(key, $(id).checked ? "1" : "0"); refresh(); });
+});
+const syncOther = () => { $("hfontOther").hidden = $("hfont").value !== "__other"; };
+$("hfont").addEventListener("change", syncOther); syncOther();
+if(sizeFam !== currentFont().css) fontChanged();        // saved sizes belong to another font
+
+// ---- Compare mode: columns with their own font picker and size box ----
+const fontOptions = $("hfont").innerHTML.replace(/<option value="__other">.*?<\/option>/, "");
+$("compare").innerHTML = cols.map(c => `
+  <div class="ccol">
+    <div class="chead">
+      <select class="cfont" aria-label="Font ${c.i+1}">${c.main ? $("hfont").innerHTML : fontOptions}</select>
+      <label class="num">Size<input type="number" class="csize" min="4" max="80" step="0.5" aria-label="Font ${c.i+1} size in px"></label>
+      <button class="btn cpng" title="Download PNG" aria-label="Download font ${c.i+1} preview as PNG"><svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M8 2.5v8M4.5 7 8 10.5 11.5 7M3 13.5h10"/></svg></button>
+    </div>
+    <canvas></canvas>
+  </div>`).join("");
+document.querySelectorAll("#compare .ccol").forEach((el, i) => {
+  const c = cols[i], sel = el.querySelector(".cfont");
+  c.canvas = el.querySelector("canvas"); c.select = sel; c.size = el.querySelector(".csize");
+  el.querySelector(".cpng").onclick = () => downloadPng(c);
+  sel.value = c.main ? $("hfont").value : c.font;
+  if(!sel.value) sel.selectedIndex = 0;
+  sel.onchange = () => {
+    if(c.main){ $("hfont").value = sel.value; $("hfont").dispatchEvent(new Event("change")); return; }
+    c.font = sel.value; store(`dsim-c${i}-font`, c.font); if(current) showState(current);
+  };
+  c.size.addEventListener("input", e => {
+    const v = parseFloat(e.target.value); if(!isFinite(v) || v <= 0) return;
+    if(c.main) return setMainSize(v);
+    const p = current && mainItem(current); if(!p) return;
+    c.scale = v / (p.size * colK(c) / c.scale); store(`dsim-c${i}-scale`, c.scale);
+    redraw(); syncSizes();
+  });
+});
+$("hfont").addEventListener("change", () => { cols[0].select.value = $("hfont").value; });
+function renderViewMode(){
+  $("viewmode").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", b.dataset.v === viewMode));
+  $("allPng").hidden = viewMode !== "all";
+}
+$("viewmode").onclick = e => {
+  const b = e.target.closest("button"); if(!b) return;
+  viewMode = b.dataset.v; store("dsim-view", viewMode);
+  renderViewMode();
+  if(current) showState(current); else render();
+};
+renderViewMode();
+
+// ---- Pixel font editor (Custom Pixel) ----
+// Edits save in this browser as you go. "Download pixel-font.js" writes the font as a file: put it next to this page
+// and it becomes the starting point for everyone who opens it, and the reference Revert goes back to.
+// "Download BDF" exports the font for the firmware.
+const PF_KEY = "dsim-pixelfont", PF_BASE_KEY = "dsim-pixelfont-base";
+const clone = o => JSON.parse(JSON.stringify(o));
+let pfSel = {size: ["L","I"].includes(store("dsim-pf-size")) ? store("dsim-pf-size") : "L", ch: store("dsim-pf-ch") || "R",
+  icon: PIX_ICONS.some(i => i.key === store("dsim-pf-icon")) ? store("dsim-pf-icon") : PIX_ICONS[0].key};
+const pfIconMode = () => pfSel.size === "I";               // the Icons tab
+const pfItem = () => pfIconMode() ? pfSel.icon : pfSel.ch;  // the selected glyph or icon
+const pfUndo = [];
+const pfS = () => pf && pf.sizes[pfSel.size];
+const pfG = () => pfIconMode() ? pf && pf.icons[pfSel.icon] : pfS() && pfS().glyphs[pfSel.ch];
+const pfEdited = (key, ch) => pfBase && (key === "I"
+  ? JSON.stringify(pf.icons[ch]) !== JSON.stringify(pfBase.icons && pfBase.icons[ch])
+  : JSON.stringify(pf.sizes[key].glyphs[ch]) !== JSON.stringify(pfBase.sizes[key] && pfBase.sizes[key].glyphs[ch]));
+const pfNarrow = () => $("pfNarrow").checked ? PITCH.y / PITCH.x : 1;
+function pfSave(){ store(PF_KEY, JSON.stringify(pf)); }
+function pfChanged(){
+  pfVer++; pfGlyphCache.clear(); pfSave();
+  pfDrawEditor(); (pfIconMode() ? iconGroup(pfSel.icon) : [pfSel.ch]).forEach(pfDrawThumb); pfPreview(); redraw();
+}
+function pfPush(){
+  const icons = pfIconMode() ? Object.fromEntries(iconGroup(pfSel.icon).map(k => [k, clone(pf.icons[k])])) : null;
+  pfUndo.push({size:pfSel.size, ch:pfItem(), g:clone(pfG()), icons}); if(pfUndo.length > 200) pfUndo.shift();
+}
+// Icons, first pass: each vector icon rasterized where it sits on the screen (threshold 128), cropped to its ink
+function pfIconsGenerate(){
+  const icons = {};
+  for(const {key} of PIX_ICONS){
+    if(!ICONS[key]) continue;
+    const buf = new Uint8Array(W*H); rasterize(x => drawVectorIcon(x, key), buf, 128);
+    let x0 = W, x1 = -1, y0 = H, y1 = -1;
+    for(let y = 0; y < H; y++) for(let x = 0; x < W; x++) if(buf[y*W + x]){ x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
+    if(x1 < 0) continue;
+    const rows = [];
+    for(let y = y0; y <= y1; y++){ let r = ""; for(let x = x0; x <= x1; x++) r += buf[y*W + x] ? "#" : "."; rows.push(r); }
+    icons[key] = {x:x0, y:y0, adv:x1 - x0 + 1, rows};
+  }
+  if(icons.battOutline && icons.battFull){
+    icons.battOutline.x = icons.battFull.x;
+    icons.battFull = battState(icons.battOutline, "full"); icons.battEmpty = battState(icons.battOutline, "empty");
+  }
+  if(icons.battSmall){ icons.battSmallFull = battState(icons.battSmall, "full"); icons.battSmallEmpty = battState(icons.battSmall, "empty"); }
+  const pill = filled => Array.from({length:15}, (_, r) => r === 0 || r === 14 ? ".###." : filled ? "#####" : "#...#");
+  icons.customM = {x:114, y:22, adv:7, rows:["##...##","##...##","###.###","#######","##.#.##","##...##","##...##","##...##","##...##"]};   // drawn, no vector
+  icons.barOn = {x:104, y:20, adv:5, rows:pill(true)};
+  icons.barOff = {x:104, y:20, adv:5, rows:pill(false)};
+  return icons;
+}
+function pfEnsureIcons(){                               // fonts saved before icons existed get the first pass
+  const gen = pfIconsGenerate(); let added = false;
+  pf.icons = pf.icons || {}; pfBase.icons = pfBase.icons || {};
+  const DERIVED = {battSmallEmpty:["battSmall","empty"], battSmallFull:["battSmall","full"], battEmpty:["battOutline","empty"]};
+  for(const {key} of PIX_ICONS){
+    if(!gen[key]) continue;
+    const from = (icons, fallback) => DERIVED[key] && icons[DERIVED[key][0]] ? battState(icons[DERIVED[key][0]], DERIVED[key][1]) : clone(fallback);
+    if(!pf.icons[key]){ pf.icons[key] = from(pf.icons, gen[key]); added = true; }
+    if(!pfBase.icons[key]){ pfBase.icons[key] = from(pfBase.icons, gen[key]); added = true; }
+  }
+  if(added){ store(PF_BASE_KEY, JSON.stringify(pfBase)); pfSave(); }
+}
+
+// Size tabs and glyph picker
+$("pfSize").innerHTML = PF_SIZES.map(S => `<button role="radio" data-k="${S.key}">${S.label} · ${S.cap} px</button>`).join("") + `<button role="radio" data-k="I">Icons</button>`;
+$("pfSize").onclick = e => { const b = e.target.closest("button"); if(!b || !pf) return; pfSel.size = b.dataset.k; store("dsim-pf-size", pfSel.size); pfRenderAll(); };
+const pfKey = ch => ch === " " ? "space" : ch;
+function pfRenderAll(){
+  if(!pf) return;
+  $("pfSize").querySelectorAll("button").forEach(b => b.setAttribute("aria-checked", b.dataset.k === pfSel.size));
+  const icons = pfIconMode();
+  $("pfGlyphs").innerHTML = icons
+    ? PIX_ICONS.filter(i => pf.icons[i.key]).map(i => `<button data-ch="${i.key}" title="${i.label}" aria-label="Icon ${i.label}"><canvas></canvas></button>`).join("")
+    : PF_CHARS.map(ch => `<button data-ch="${encodeURIComponent(ch)}" title="${pfKey(ch).replace(/"/g,"&quot;")}" aria-label="Glyph ${pfKey(ch).replace(/"/g,"&quot;")}"><canvas></canvas></button>`).join("");
+  (icons ? PIX_ICONS.map(i => i.key).filter(k => pf.icons[k]) : PF_CHARS).forEach(pfDrawThumb);
+  $("pfHRow").hidden = !icons; $("pfMoveLbl").textContent = icons ? "Position" : "Move";
+  pfRevertLabel();
+  $("pfSample").hidden = icons; $("pfPreviewLbl").hidden = !icons;
+  $("pfExportBdf").hidden = icons; $("pfIconPng").hidden = $("pfIconZip").hidden = $("pfIconH").hidden = !icons;
+  pfDrawEditor(); pfPreview();
+  if(icons){ $("pfNote").textContent = "Icons are drawn where they sit on the 128 × 40 screen; Position moves an icon on every screen that uses it. Each battery size's empty, low and full states share a position, as do the two bars; Width and Height are per icon. Download PNG saves the selected icon; Download all PNGs zips every icon with icons.csv (sizes and positions); icons.h has them all for u8g2. First pass from the vector artwork. Turn off Pixel icons above to compare with the vector icons."; return; }
+  const S = pfS();
+  $("pfNote").textContent = `Cap ${S.cap} px · x-height ${S.xh} px · ascent ${S.asc} · descent ${S.desc} rows · first pass from Plus Jakarta Sans ${S.weight}` +
+    (pf.narrow && pf.narrow < 1 ? `, narrowed ${Math.round((1 - pf.narrow)*100)}% for the wide pixels.` : ".");
+}
+function pfRevertLabel(){                              // linked icons revert together (they share size and position)
+  const b = $("pfTools").querySelector('[data-pf="revert"]');
+  b.textContent = pfIconMode() ? "Revert icon" : "Revert glyph";
+  b.title = pfIconMode() ? "Back to this icon as it is in pixel-font.js (it stays at its current position)" : "Back to this glyph as it is in pixel-font.js (or the last import or regenerate)";
+}
+function pfDrawThumb(ch){
+  const btn = $("pfGlyphs").querySelector(`[data-ch="${encodeURIComponent(ch)}"]`); if(!btn) return;
+  const icons = pfIconMode(), S = pfS(), g = icons ? pf.icons[ch] : S.glyphs[ch], c = btn.querySelector("canvas");
+  const rows = icons ? g.rows.length : S.asc + S.desc, k = Math.max(1, Math.floor(44 / rows));
+  c.width = Math.max(1, g.adv) * k; c.height = rows * k;
+  const x = c.getContext("2d"); x.fillStyle = "#000"; x.fillRect(0, 0, c.width, c.height); x.fillStyle = "#fff";
+  g.rows.forEach((row, r) => { for(let i = 0; i < row.length; i++) if(row[i] === "#") x.fillRect(i*k, r*k, k, k); });
+  btn.setAttribute("aria-pressed", ch === pfItem());
+  btn.classList.toggle("edited", pfEdited(pfSel.size, ch));
+}
+$("pfGlyphs").onclick = e => {
+  const b = e.target.closest("button"); if(!b) return;
+  const prev = pfItem(), next = decodeURIComponent(b.dataset.ch);
+  if(pfIconMode()){ pfSel.icon = next; store("dsim-pf-icon", next); } else { pfSel.ch = next; store("dsim-pf-ch", next); }
+  pfDrawThumb(prev); pfDrawThumb(next); pfDrawEditor(); pfRevertLabel(); if(pfIconMode()) pfPreview();
+};
+
+// The editing grid: one cell per pixel, with the baseline, x-height, cap and descender lines
+const PF_LABEL = 46, PF_PAD = 8;                        // left gutter for line labels, room above and below
+function pfGeom(){
+  const S = pfS(), g = pfG(), rows = pfIconMode() ? g.rows.length : S.asc + S.desc, wide = $("pfTrue").checked ? PITCH.x / PITCH.y : 1;
+  const avail = Math.max(240, ($("pfCard").clientWidth || 800) - 48 - PF_LABEL);   // fit wide icons (the logo) in the card
+  const ch = Math.max(4, Math.min(30, Math.floor(460 / rows), Math.floor(avail / (g.adv * wide))));
+  const cw = Math.round(ch * wide);                       // true shape: 15% wider than tall
+  return {S, g, rows, cw, ch};
+}
+function pfDrawEditor(){
+  if(!pf) return;
+  const {S, g, rows, cw, ch} = pfGeom(), c = $("pfCanvas"), d = dpr();
+  const w = PF_LABEL + g.adv*cw + 1, h = rows*ch + 1 + 2*PF_PAD;
+  c.width = w*d; c.height = h*d; c.style.width = w + "px"; c.style.height = h + "px";
+  const x = c.getContext("2d"); x.setTransform(d,0,0,d,0,0);
+  x.clearRect(0, 0, w, h); x.translate(0, PF_PAD);
+  x.fillStyle = "#0b0b0c"; x.fillRect(PF_LABEL, 0, g.adv*cw, rows*ch);
+  g.rows.forEach((row, r) => { for(let i = 0; i < g.adv; i++){
+    x.fillStyle = row[i] === "#" ? "#f4f7ff" : "#17171a";
+    x.fillRect(PF_LABEL + i*cw + 1, r*ch + 1, cw - 1, ch - 1);
+  } });
+  const line = (rowsAbove, label, color) => {             // a guide at the top edge of the row `rowsAbove` above the baseline
+    const y = (S.asc - rowsAbove) * ch + 0.5;
+    x.strokeStyle = color; x.lineWidth = 1; x.beginPath(); x.moveTo(PF_LABEL - 4, y); x.lineTo(PF_LABEL + g.adv*cw, y); x.stroke();
+    x.fillStyle = color; x.font = '600 10.5px "Plus Jakarta Sans", sans-serif'; x.textAlign = "right"; x.textBaseline = "middle"; x.fillText(label, PF_LABEL - 8, y);
+  };
+  $("pfW").textContent = g.adv + " px";
+  if(pfIconMode()){
+    const info = PIX_ICONS.find(i => i.key === pfSel.icon);
+    $("pfChar").textContent = info.label; $("pfH").textContent = rows + " px";
+    const odd = iconGroup(pfSel.icon).filter(k => k !== pfSel.icon && pf.icons[k]).map(k => {   // linked icons that differ
+      const o = pf.icons[k], d = [];
+      if(o.adv !== g.adv || o.rows.length !== rows) d.push(`${o.adv} × ${o.rows.length}`);
+      if(o.x !== g.x || o.y !== g.y) d.push(`at x ${o.x}, y ${o.y}`);
+      return d.length ? `${PIX_ICONS.find(i => i.key === k).label} is ${d.join(" ")}` : null;
+    }).filter(Boolean);
+    $("pfInfo").textContent = `${pfEdited("I", pfSel.icon) ? "Edited" : "Unchanged"} · ${g.adv} × ${rows} at x ${g.x}, y ${g.y}` + (odd.length ? ` · ${odd.join(", ")}` : "");
+    return;
+  }
+  line(S.cap, "cap " + S.cap, "#e8a33d");
+  if(S.xh && S.xh !== S.cap) line(S.xh, "x " + S.xh, "#4fb3a9");
+  line(0, "base", "#e05252");
+  line(-S.desc, "desc", "#8a8a90");
+  $("pfChar").textContent = pfSel.ch === " " ? "space" : pfSel.ch;
+  $("pfInfo").textContent = `${pfEdited(pfSel.size, pfSel.ch) ? "Edited" : "Unchanged"} · ${pfSel.ch === " " ? "U+0020" : "U+" + pfSel.ch.charCodeAt(0).toString(16).toUpperCase().padStart(4, "0")}`;
+}
+let pfPaint = null;
+function pfCellAt(e){
+  const {g, rows, cw, ch} = pfGeom(), r = $("pfCanvas").getBoundingClientRect();
+  const c = Math.floor((e.clientX - r.left - PF_LABEL) / cw), row = Math.floor((e.clientY - r.top - PF_PAD) / ch);
+  return c >= 0 && c < g.adv && row >= 0 && row < rows ? [row, c] : null;
+}
+function pfSet(row, c, on){
+  const g = pfG(), s = g.rows[row]; if((s[c] === "#") === on) return false;
+  g.rows[row] = s.slice(0, c) + (on ? "#" : ".") + s.slice(c + 1); return true;
+}
+$("pfCanvas").addEventListener("pointerdown", e => {
+  const cell = pfCellAt(e); if(!cell) return;
+  pfPush(); pfPaint = pfG().rows[cell[0]][cell[1]] !== "#";
+  pfSet(cell[0], cell[1], pfPaint); pfChanged();
+  $("pfCanvas").setPointerCapture(e.pointerId);
+});
+$("pfCanvas").addEventListener("pointermove", e => { if(pfPaint === null) return; const cell = pfCellAt(e); if(cell && pfSet(cell[0], cell[1], pfPaint)) pfChanged(); });
+$("pfCanvas").addEventListener("pointerup", () => pfPaint = null);
+$("pfCanvas").addEventListener("pointercancel", () => pfPaint = null);
+$("pfTrue").addEventListener("change", () => { store("dsim-pf-true", $("pfTrue").checked ? "1" : "0"); pfDrawEditor(); });
+if(store("dsim-pf-true") === "0") $("pfTrue").checked = false;
+
+// Glyph tools
+$("pfTools").onclick = e => {
+  const b = e.target.closest("[data-pf]"); if(!b || !pf) return;
+  const g = pfG(), op = b.dataset.pf, blank = ".".repeat(g.adv), icon = pfIconMode();
+  pfPush();
+  const grp = icon ? iconGroup(pfSel.icon).map(k => pf.icons[k]) : [g];
+  if(icon && ["left","right","up","down"].includes(op)){   // icons: move on the screen, with their linked icon
+    const d = {left:[-1,0], right:[1,0], up:[0,-1], down:[0,1]}[op];
+    for(const ic of grp){ ic.x += d[0]; ic.y += d[1]; }
+  }
+  else if(op === "h-" && g.rows.length > 1) g.rows.pop();
+  else if(op === "h+") g.rows.push(blank);
+  else if(op === "w-" && g.adv > 1){ g.adv--; g.rows = g.rows.map(r => r.slice(0, -1)); }
+  else if(op === "w+"){ g.adv++; g.rows = g.rows.map(r => r + "."); }
+  else if(op === "left") g.rows = g.rows.map(r => r.slice(1) + ".");
+  else if(op === "right") g.rows = g.rows.map(r => "." + r.slice(0, -1));
+  else if(op === "up") g.rows = [...g.rows.slice(1), blank];
+  else if(op === "down") g.rows = [blank, ...g.rows.slice(0, -1)];
+  else if(op === "clear") g.rows = g.rows.map(() => blank);
+  else if(op === "revert" && icon){ const base = pfBase.icons && pfBase.icons[pfSel.icon]; if(base) pf.icons[pfSel.icon] = {...clone(base), x:g.x, y:g.y}; }   // keeps the shared position
+  else if(op === "revert"){ const base = pfBase.sizes[pfSel.size].glyphs[pfSel.ch]; if(base) pfS().glyphs[pfSel.ch] = clone(base); }
+  else { pfUndo.pop(); return; }
+  pfChanged();
+};
+function pfUndoLast(){
+  const u = pfUndo.pop(); if(!u) return;
+  if(u.size === "I") Object.assign(pf.icons, u.icons);
+  else pf.sizes[u.size].glyphs[u.ch] = u.g;
+  if(u.size !== pfSel.size || u.ch !== pfItem()){ pfSel.size = u.size; if(u.size === "I") pfSel.icon = u.ch; else pfSel.ch = u.ch; pfRenderAll(); }
+  pfChanged();
+}
+document.addEventListener("keydown", e => {
+  const inField = e.target.closest && e.target.closest("input, textarea, select");
+  if((e.metaKey || e.ctrlKey) && !e.shiftKey && e.key.toLowerCase() === "z" && !inField){ e.preventDefault(); pfUndoLast(); }
+});
+
+// Preview: the sample text in this size on a simulated display
+function pfPreview(){
+  if(!pf) return;
+  if(pfIconMode()) return pfPreviewIcon();
+  const S = pfS(), buf = new Uint8Array(W*H), L = pfLayout(pfSel.size, $("pfSample").value);
+  const base = Math.round(H/2 + S.cap/2);
+  rasterize(x => drawBitmapString(x, L, Math.round(W/2 - (L.minX + L.maxX)/2), base), buf);
+  paint($("pfPreview"), buf, {dims:false});
+}
+function pfPreviewIcon(){                               // the screen that uses the icon, with the pixel icons
+  const info = PIX_ICONS.find(i => i.key === pfSel.icon), name = info.screen, buf = new Uint8Array(W*H);
+  $("pfPreviewLbl").textContent = name + " screen" + (info.swap ? `, with ${info.label}` : "");
+  pfIconForce = true;
+  try{
+    rasterize(x => {
+      for(const it of LAYOUTS[name] || []){ if(it.icon) drawIcon(x, it.icon === info.swap ? info.key : it.icon, it.dx, it.pdx); else if(it.bars !== undefined) drawBars(x, it.bars); }
+      for(const it of itemsFor({name})) if(!it.long && it.text) drawText(x, fontFor(it, false), caps(it.text), it.cx, it.base);
+    }, buf);
+  } finally { pfIconForce = false; }
+  paint($("pfPreview"), buf, {dims:false});
+}
+$("pfSample").addEventListener("input", () => { store("dsim-pf-sample", $("pfSample").value); pfPreview(); });
+if(store("dsim-pf-sample")) $("pfSample").value = store("dsim-pf-sample");
+$("pfUse").onclick = () => { $("hfont").value = "Custom Pixel"; $("hfont").dispatchEvent(new Event("change")); };
+
+// Regenerate, export, import
+$("pfRegen").onclick = async () => {
+  if(!confirm("Replace every glyph with a fresh first pass from Plus Jakarta Sans? Your edits will be lost.")) return;
+  $("pfNote").textContent = "Generating from Plus Jakarta Sans…";
+  const gen = await pfGenerate(pfNarrow());
+  gen.icons = pf.icons;                                 // icons aren't generated from the font: keep them
+  pf = gen; pfBase = {...clone(gen), icons: pfBase.icons}; pfUndo.length = 0;
+  store(PF_BASE_KEY, JSON.stringify(pfBase)); pfVer++; pfGlyphCache.clear(); pfSave(); pfRenderAll(); redraw(); syncSizes();
+};
+$("pfReset").onclick = () => {
+  const file = window.PIXEL_FONT && window.PIXEL_FONT.sizes ? pfPrune(clone(window.PIXEL_FONT)) : null;
+  if(!file){ alert("pixel-font.js has no saved font yet. Use Download pixel-font.js and put the file next to this page."); return; }
+  if(!confirm("Replace this browser's font and icons with pixel-font.js? Edits that aren't in the file will be lost.")) return;
+  pf = file; pfBase = clone(file); pfUndo.length = 0; pfEnsureIcons();
+  store(PF_BASE_KEY, JSON.stringify(pfBase)); pfVer++; pfGlyphCache.clear(); pfSave(); pfRenderAll(); redraw(); syncSizes();
+};
+function download(name, text, type = "text/plain"){
+  const a = document.createElement("a"); a.download = name; a.href = URL.createObjectURL(new Blob([text], {type})); a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+// A preview card as PNG: the canvas as drawn (zoom, panel, glow, dimensions), at screen resolution
+const downloadPng = col => savePng(col.canvas, [current ? current.name : "display", colFont(col).name]);
+function savePng(canvas, parts){
+  const name = parts.map(slug).filter(Boolean).join("-") + ".png";
+  canvas.toBlob(b => {
+    const a = document.createElement("a"); a.download = name; a.href = URL.createObjectURL(b); a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, "image/png");
+}
+function pfToJs(font){                                  // one glyph per line, so edits make small diffs
+  const sizes = Object.entries(font.sizes).map(([k, S]) => {
+    const {glyphs, ...meta} = S;
+    const gl = Object.entries(glyphs).map(([ch, g]) => `      ${JSON.stringify(ch)}: ${JSON.stringify(g)}`).join(",\n");
+    return `    ${JSON.stringify(k)}: {${Object.entries(meta).map(([a, b]) => `${JSON.stringify(a)}: ${JSON.stringify(b)}`).join(", ")}, "glyphs": {\n${gl}\n    }}`;
+  }).join(",\n");
+  const {sizes: _, icons: __, ...meta} = font;
+  const icons = font.icons ? Object.entries(font.icons).map(([k, ic]) => `    ${JSON.stringify(k)}: ${JSON.stringify(ic)}`).join(",\n") : "";
+  return `// Custom Pixel — bitmap font and icons for the 128×40 display, edited in DisplaySim.html (Pixel editor).\n` +
+    `// Each glyph: advance in px and rows top to bottom ("#" = lit); the baseline is under row "asc".\n` +
+    `// Each icon: its top-left x, y on the screen, width (adv) and rows.\n` +
+    `window.PIXEL_FONT = {${Object.entries(meta).map(([a, b]) => `${JSON.stringify(a)}: ${JSON.stringify(b)}`).join(", ")}, "sizes": {\n${sizes}\n  }` +
+    (icons ? `,\n  "icons": {\n${icons}\n  }` : "") + `};\n`;
+}
+$("pfExportJs").onclick = () => { if(pf) download("pixel-font.js", pfToJs(pf), "text/javascript"); };
+function pfToBdf(font, key){
+  const S = font.sizes[key], label = PF_SIZES.find(s => s.key === key).label, px = S.asc + S.desc;
+  const chars = PF_CHARS.filter(ch => S.glyphs[ch]);
+  const maxAdv = Math.max(...chars.map(ch => S.glyphs[ch].adv));
+  const out = ["STARTFONT 2.1", `FONT -Custom-Custom Pixel ${label}-Medium-R-Normal--${px}-${px*10}-72-72-P-${maxAdv*10}-ISO10646-1`,
+    `SIZE ${px} 72 72`, `FONTBOUNDINGBOX ${maxAdv} ${px} 0 ${-S.desc}`, "STARTPROPERTIES 4",
+    `FONT_ASCENT ${S.asc}`, `FONT_DESCENT ${S.desc}`, `CAP_HEIGHT ${S.cap}`, `X_HEIGHT ${S.xh}`, "ENDPROPERTIES", `CHARS ${chars.length}`];
+  for(const ch of chars){
+    const g = S.glyphs[ch], code = ch.charCodeAt(0), bytes = Math.ceil(g.adv / 8);
+    out.push(`STARTCHAR U+${code.toString(16).toUpperCase().padStart(4, "0")}`, `ENCODING ${code}`,
+      `SWIDTH ${Math.round(g.adv * 1000 / px)} 0`, `DWIDTH ${g.adv} 0`, `BBX ${g.adv} ${px} 0 ${-S.desc}`, "BITMAP");
+    for(const row of g.rows){
+      let hex = "";
+      for(let b = 0; b < bytes; b++){ let v = 0; for(let i = 0; i < 8; i++) if(row[b*8 + i] === "#") v |= 0x80 >> i; hex += v.toString(16).toUpperCase().padStart(2, "0"); }
+      out.push(hex);
+    }
+    out.push("ENDCHAR");
+  }
+  out.push("ENDFONT");
+  return out.join("\n") + "\n";
+}
+// Icons: the selected one as a PNG, or all of them as XBM bitmaps (LSB first, rows padded to bytes) in a C header
+const iconFile = key => `icon-${PIX_ICONS.find(i => i.key === key).c.replace(/_/g, "-")}.png`;
+function pfIconBlob(key){                               // white on black, one image pixel per display pixel
+  const ic = pf.icons[key], c = document.createElement("canvas"); c.width = ic.adv; c.height = ic.rows.length;
+  const x = c.getContext("2d"); x.fillStyle = "#000"; x.fillRect(0, 0, c.width, c.height); x.fillStyle = "#fff";
+  ic.rows.forEach((row, r) => { for(let i = 0; i < row.length; i++) if(row[i] === "#") x.fillRect(i, r, 1, 1); });
+  return new Promise(res => c.toBlob(res, "image/png"));
+}
+function saveBlob(name, b){
+  const a = document.createElement("a"); a.download = name; a.href = URL.createObjectURL(b); a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+}
+async function pfIconPng(key){ saveBlob(iconFile(key), await pfIconBlob(key)); }
+// A zip without compression (PNGs are already compressed): local headers, central directory, end record
+const CRC_TABLE = Array.from({length:256}, (_, n) => { let c = n; for(let k = 0; k < 8; k++) c = c & 1 ? 0xEDB88320 ^ (c >>> 1) : c >>> 1; return c >>> 0; });
+const crc32 = u8 => { let c = 0xFFFFFFFF; for(const b of u8) c = CRC_TABLE[(c ^ b) & 255] ^ (c >>> 8); return (c ^ 0xFFFFFFFF) >>> 0; };
+function makeZip(files){                                // files: [{name, data: Uint8Array}]
+  const enc = new TextEncoder(), parts = [], dir = []; let off = 0;
+  const d = new Date(), time = (d.getHours() << 11) | (d.getMinutes() << 5) | (d.getSeconds() >> 1);
+  const date = ((d.getFullYear() - 1980) << 9) | ((d.getMonth() + 1) << 5) | d.getDate();
+  const hdr = (size, fill) => { const b = new DataView(new ArrayBuffer(size)); fill(b); return new Uint8Array(b.buffer); };
+  for(const f of files){
+    const name = enc.encode(f.name), crc = crc32(f.data), n = f.data.length;
+    const common = (b, o) => { b.setUint16(o, 20, true); b.setUint16(o+2, 0, true); b.setUint16(o+4, 0, true); b.setUint16(o+6, time, true);
+      b.setUint16(o+8, date, true); b.setUint32(o+10, crc, true); b.setUint32(o+14, n, true); b.setUint32(o+18, n, true); b.setUint16(o+22, name.length, true); };
+    parts.push(hdr(30, b => { b.setUint32(0, 0x04034b50, true); common(b, 4); }), name, f.data);
+    dir.push(hdr(46, b => { b.setUint32(0, 0x02014b50, true); b.setUint16(4, 20, true); common(b, 6); b.setUint32(42, off, true); }), name);
+    off += 30 + name.length + n;
+  }
+  const dirSize = dir.reduce((a, p) => a + p.length, 0);
+  const end = hdr(22, b => { b.setUint32(0, 0x06054b50, true); b.setUint16(8, files.length, true); b.setUint16(10, files.length, true);
+    b.setUint32(12, dirSize, true); b.setUint32(16, off, true); });
+  return new Blob([...parts, ...dir, end], {type:"application/zip"});
+}
+async function pfIconsZip(){
+  const list = PIX_ICONS.filter(i => pf.icons[i.key]), files = [];
+  for(const i of list) files.push({name: iconFile(i.key), data: new Uint8Array(await (await pfIconBlob(i.key)).arrayBuffer())});
+  const csv = ["file,name,label,width,height,x,y", ...list.map(i => { const ic = pf.icons[i.key];
+    return [iconFile(i.key), i.c, `"${i.label}"`, ic.adv, ic.rows.length, ic.x, ic.y].join(","); })].join("\n") + "\n";
+  files.push({name:"icons.csv", data: new TextEncoder().encode(csv)});
+  saveBlob("hmi-icons.zip", makeZip(files));
+}
+function pfIconsHeader(){
+  const out = ["// HMI icons for the 128×40 display, edited in DisplaySim.html (Pixel editor → Icons).",
+    "// XBM bitmaps (LSB first, each row padded to whole bytes), for u8g2 drawXBMP(x, y, w, h, bits).",
+    "// _X and _Y are the icon's top-left on the screen as designed.", "#pragma once", "",
+    "#ifndef U8X8_PROGMEM", "#define U8X8_PROGMEM", "#endif", ""];
+  for(const info of PIX_ICONS){
+    const ic = pf.icons[info.key]; if(!ic) continue;
+    const N = "ICON_" + info.c.toUpperCase(), w = ic.adv, h = ic.rows.length, bytes = [];
+    for(const row of ic.rows) for(let b = 0; b < Math.ceil(w / 8); b++){
+      let v = 0; for(let i = 0; i < 8; i++) if(row[b*8 + i] === "#") v |= 1 << i;
+      bytes.push("0x" + v.toString(16).padStart(2, "0"));
+    }
+    out.push(`// ${info.label}`, ...ic.rows.map(r => "//   " + r.replace(/\./g, " ").replace(/#/g, "█").replace(/\s+$/, "")),
+      `#define ${N}_W ${w}`, `#define ${N}_H ${h}`, `#define ${N}_X ${ic.x}`, `#define ${N}_Y ${ic.y}`,
+      `static const unsigned char icon_${info.c}_bits[] U8X8_PROGMEM = {`);
+    for(let i = 0; i < bytes.length; i += 12) out.push("  " + bytes.slice(i, i + 12).join(", ") + (i + 12 < bytes.length ? "," : ""));
+    out.push("};", "");
+  }
+  return out.join("\n");
+}
+$("pfIconPng").onclick = () => { if(pf && pfIconMode()) pfIconPng(pfSel.icon); };
+$("pfIconZip").onclick = () => { if(pf) pfIconsZip(); };
+$("pfIconH").onclick = () => { if(pf) download("icons.h", pfIconsHeader(), "text/x-c"); };
+$("pfExportBdf").onclick = () => { if(pf) download(`custom-pixel-${pfS().cap}px.bdf`, pfToBdf(pf, pfSel.size)); };
+$("pfImport").onchange = async e => {
+  const f = e.target.files[0]; if(!f) return;
+  try{
+    const text = await f.text(), font = JSON.parse(text.slice(text.indexOf("{"), text.lastIndexOf("}") + 1));
+    if(!font.sizes || !PF_SIZES.every(S => font.sizes[S.key] && font.sizes[S.key].glyphs)) throw new Error("not a Custom Pixel font");
+    pfPrune(font);
+    const oldBaseIcons = pfBase.icons, hasIcons = !!font.icons;
+    if(!hasIcons) font.icons = pf.icons;                 // a file without icons keeps the current ones
+    pf = font; pfBase = clone(font); if(!hasIcons && oldBaseIcons) pfBase.icons = oldBaseIcons;
+    pfUndo.length = 0; pfEnsureIcons();
+    store(PF_BASE_KEY, JSON.stringify(pfBase)); pfVer++; pfGlyphCache.clear(); pfSave(); pfRenderAll(); redraw(); syncSizes();
+  }catch(err){ alert("Couldn't read that file as a Custom Pixel font: " + err.message); }
+  e.target.value = "";
+};
+$("pfNarrow").addEventListener("change", () => store("dsim-pf-narrow", $("pfNarrow").checked ? "1" : "0"));
+if(store("dsim-pf-narrow") === "0") $("pfNarrow").checked = false;
+
+// Start: this browser's saved font, else pixel-font.js next to the page, else a fresh first pass.
+// pixel-font.js is the reference: whenever it changes, it becomes what Revert goes back to and what "edited" is
+// measured against. Edits saved in this browser are kept (and show as edited if they differ from the file).
+const PF_FILE_KEY = "dsim-pixelfont-file";
+(async function pfInit(){
+  let saved = null, base = null;
+  try{ saved = JSON.parse(store(PF_KEY) || "null"); base = JSON.parse(store(PF_BASE_KEY) || "null"); }catch(e){}
+  const file = window.PIXEL_FONT && window.PIXEL_FONT.sizes ? pfPrune(clone(window.PIXEL_FONT)) : null;
+  pf = pfPrune(saved) || file; pfBase = pfPrune(base) || (file && clone(file));
+  if(file){
+    const sig = String(crc32(new TextEncoder().encode(JSON.stringify(file))));
+    if(store(PF_FILE_KEY) !== sig){
+      if(saved && pfBase){                               // glyphs and icons this browser hadn't changed follow the new file
+        const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+        for(const [k, S] of Object.entries(file.sizes)){
+          if(!pf.sizes[k]){ pf.sizes[k] = clone(S); continue; }
+          for(const [ch, g] of Object.entries(S.glyphs)){
+            const mine = pf.sizes[k].glyphs[ch], old = pfBase.sizes[k] && pfBase.sizes[k].glyphs[ch];
+            if(!mine || same(mine, old)) pf.sizes[k].glyphs[ch] = clone(g);
+          }
+        }
+        pf.icons = pf.icons || {};
+        for(const [key, ic] of Object.entries(file.icons || {})){
+          const mine = pf.icons[key], old = pfBase.icons && pfBase.icons[key];
+          if(!mine || same(mine, old)) pf.icons[key] = clone(ic);
+        }
+        pfSave();
+      }
+      pfBase = clone(file); store(PF_FILE_KEY, sig); store(PF_BASE_KEY, JSON.stringify(pfBase));
+    }
+  }
+  if(!pf || !pfBase){
+    $("pfNote").textContent = "Generating a first pass from Plus Jakarta Sans…";
+    const gen = await pfGenerate(pfNarrow());
+    pf = pf || gen; pfBase = pfBase || clone(gen);
+    store(PF_BASE_KEY, JSON.stringify(pfBase)); pfSave();
+  }
+  pfEnsureIcons();
+  pfVer++; pfGlyphCache.clear(); pfRenderAll(); redraw(); syncSizes();
+})();
+
+// MAIN and BATTERY come from hmi-screens.js (the same screen data HMI-Flow.html keeps inline)
+hmi = typeof MAIN !== "undefined" ? [...MAIN, ...BATTERY] : [];
+// Screens that exist only here, rebuilt live (no exported artwork yet): placed after the screen they derive from
+const LIVE_STATES = [{after:"Start Treatment", name:"Custom Treatment"}];
+for(const {after, name} of LIVE_STATES){
+  const i = hmi.findIndex(s => s.name === after);
+  if(i >= 0) hmi.splice(i + 1, 0, {...hmi[i], name, live:true});
+}
+// All screens: every screen in the main font, its name underneath; click one to edit it
+const slug = t => String(t).trim().replace(/[^\w.-]+/g, "-").replace(/^-+|-+$/g, "").toLowerCase();
+$("allgrid").innerHTML = hmi.map((st, i) => `<button class="acell" data-i="${i}" title="Edit this screen"><canvas></canvas><span>${esc(st.name)}</span></button>`).join("");
+allCards = [...$("allgrid").querySelectorAll(".acell")].map((el, i) => {
+  const c = {st:hmi[i], im:new Image(), fb:new Uint8Array(W*H), canvas:el.querySelector("canvas"), el};
+  c.im.onload = () => { if(allActive()) redraw(); };     // original artwork, for Original artwork
+  c.im.src = hmi[i].img;
+  el.onclick = () => showState(c.st);
+  return c;
+});
+$("allPng").onclick = async () => {                     // every screen as drawn, in one zip
+  const font = currentFont().name, files = [];
+  for(const c of allCards){
+    const b = await new Promise(res => c.canvas.toBlob(res, "image/png"));
+    files.push({name: [c.st.name, font].map(slug).join("-") + ".png", data: new Uint8Array(await b.arrayBuffer())});
+  }
+  saveBlob(`hmi-screens-${slug(font)}.zip`, makeZip(files));
+};
+if(hmi.length){
+  $("states").innerHTML = hmi.map((s,k) => `<button data-k="${k}" data-n="${s.name}" aria-pressed="false">${s.name}</button>`).join("");
+  $("statesNote").textContent = "Every screen is rebuilt live from the HMI-Flow designs: the text uses the font above, the icons and the Dayspring logo come from the pixel editor's Icons tab (Pixel icons on) or the original vector shapes. The status LED sits outside the display, so its blink and fade aren't shown.";
+  showState(hmi.find(s => s.name === "Start Treatment") || hmi[0]);
+} else {
+  $("statesNote").textContent = "Couldn't load hmi-screens.js. Keep it in the same folder as this page.";
+  drawWith(() => {});
+}
+$("states").onclick = e => { const b = e.target.closest("button"); if(b) showState(hmi[+b.dataset.k]); };
+
+// ---- Draw on the display ----
+let painting = null;
+function cellAt(e){
+  const g = geom(), c = $("out"), r = c.getBoundingClientRect();
+  const k = devPxPerMm()*zoom/dpr(), showPanel = $("panel").checked;
+  const ox = showPanel ? 0 : g.aa.x-0.6, oy = showPanel ? 0 : g.aa.y-0.6;
+  const mg = $("dims").checked ? MARGIN : 0;
+  const mx = (e.clientX - r.left - mg)/k + ox - g.aa.x, my = (e.clientY - r.top - mg)/k + oy - g.aa.y;
+  const q = Math.floor(mx/g.pitch.x), w = Math.floor(my/g.pitch.y);
+  return q>=0 && q<W && w>=0 && w<H ? w*W+q : -1;
+}
+$("out").onpointerdown = e => {
+  if(!$("draw").checked) return;
+  const p = cellAt(e); if(p<0) return;
+  painting = fb[p] ? 0 : 1; fb[p] = painting; lastDraw = null; setPressed(null); render();
+  $("out").setPointerCapture(e.pointerId);
+};
+$("out").onpointermove = e => { if(painting===null) return; const p = cellAt(e); if(p>=0 && fb[p]!==painting){ fb[p] = painting; render(); } };
+$("out").onpointerup = $("out").onpointercancel = () => painting = null;
+$("draw").onchange = () => current ? showState(current) : render();
+$("clear").onclick = () => { fb.fill(0); lastDraw = null; setPressed(null); render(); };
+$("fill").onclick = () => { fb.fill(1); lastDraw = null; setPressed(null); render(); };
+$("export").onclick = () => {
+  const c = document.createElement("canvas"); c.width = W; c.height = H;
+  const x = c.getContext("2d"), im = x.createImageData(W,H);
+  (compareActive() ? cols[0].fb : allActive() ? (allCards.find(c => c.st === current) || {fb}).fb : fb).forEach((v,p) => { im.data.set(v ? [255,255,255,255] : [0,0,0,255], p*4); });   // compare: column 1
+  x.putImageData(im,0,0);
+  const a = document.createElement("a"); a.download = "display-128x40.png"; a.href = c.toDataURL(); a.click();
+};
+
+// ---- Calibration ----
+const savedPpi = store("dsim-ppi"), savedFine = store("dsim-fine");
+if(savedPpi){ $("ppi").value = savedPpi; $("mon").value = [...$("mon").options].some(o=>o.value===savedPpi) ? savedPpi : "custom"; }
+if(savedFine) $("fine").value = savedFine;
+$("ppi").hidden = $("mon").value !== "custom";
+$("mon").onchange = () => { const v = $("mon").value; $("ppi").hidden = v !== "custom"; if(v !== "custom") $("ppi").value = v; store("dsim-ppi", $("ppi").value); render(); drawCard(); };
+$("ppi").oninput = () => { store("dsim-ppi", $("ppi").value); render(); drawCard(); };
+$("fine").oninput = () => { $("fineVal").textContent = (+$("fine").value).toFixed(1) + "%"; store("dsim-fine", $("fine").value); render(); drawCard(); };
+$("fineVal").textContent = (+$("fine").value).toFixed(1) + "%";
+$("card").onclick = () => { $("cardOut").hidden = !$("cardOut").hidden; drawCard(); };
+function drawCard(){
+  const c = $("cardOut"); if(c.hidden) return;
+  const k = devPxPerMm(), w = 85.6, h = 53.98;
+  c.width = Math.round((w+2)*k); c.height = Math.round((h+2)*k);
+  c.style.width = c.width/dpr() + "px"; c.style.height = c.height/dpr() + "px";
+  const x = c.getContext("2d"); x.setTransform(k,0,0,k,k,k);
+  x.strokeStyle = "#18181b"; x.lineWidth = 0.25; rr(x,0,0,w,h,3.18); x.stroke();
+  x.fillStyle = "#71717a"; x.font = "3px Plus Jakarta Sans, sans-serif"; x.fillText("Credit card · 85.6 × 54 mm", 4, 8);
+}
+
+// ---- Specs ----
+$("specs").innerHTML = [
+  ["Resolution","128 × 40, monochrome white"], ["Active area","31.852 × 8.66 mm"],
+  ["Pixel pitch","0.249 × 0.217 mm"], ["Pixel aspect","1.147 : 1 (wider than tall)"],
+  ["Emitter size","0.229 × 0.197 mm"], ["Pixel density","102 × 117 ppi"],
+  ["Gray scale","2 levels (on/off)"], ["Brightness","256 dimmer steps"],
+].map(([a,b])=>`<div>${a} <b>${b}</b></div>`).join("");
+
+["dims","panel","square","glow"].forEach(id => {
+  const v = store("dsim-"+id); if(v !== null) $(id).checked = v === "1";
+  $(id).addEventListener("change", () => { store("dsim-"+id, $(id).checked ? "1" : "0"); render(); });
+});
+$("bright").oninput = render;
+// Re-render when the window moves to a screen with a different pixel ratio
+(function watchDpr(){ matchMedia(`(resolution: ${dpr()}dppx)`).addEventListener("change", () => { render(); drawCard(); watchDpr(); }, {once:true}); })();
+render();
+
+// ---- Embedded (DisplaySim.html?embed, e.g. inside Enclosure3D.html): draw HMI screens in Custom Pixel and
+// send each new framebuffer to the parent page. postMessage works when the pages are opened as files too.
+if(new URLSearchParams(location.search).has("embed")){
+  viewMode = "single"; $("draw").checked = false; $("horig").checked = false;
+  $("hfont").value = "Custom Pixel"; $("hfont").dispatchEvent(new Event("change"));
+  const post = () => parent.postMessage({type:"dsim-fb", name: current ? current.name : null, fb}, "*");
+  const renderMain = render;
+  render = dirty => { renderMain(dirty); post(); };
+  const ready = () => parent.postMessage({type:"dsim-ready", screens: hmi.map(s => s.name)}, "*");
+  addEventListener("message", e => {
+    const d = e.data || {};
+    if(d.type === "dsim-hello") ready();                 // the parent may start listening after this page loads
+    if(d.type === "dsim-show"){ const st = hmi.find(s => s.name === d.name); if(st) showState(st); }
+  });
+  ready();
+}
+</script>
+</body>
+</html>
