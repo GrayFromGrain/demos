@@ -165,14 +165,14 @@
 </button>
 <div class="panel view" id="viewPanel" aria-labelledby="viewTitle" hidden>
   <h2 id="viewTitle">3D view</h2>
-  <div class="row">
+  <div class="row" id="viewPresets">
     <button class="btn" data-view="angled">Angled</button>
     <button class="btn" data-view="top">Top</button>
     <button class="btn" data-view="buttons">Buttons</button>
     <button class="btn" data-view="front">Front</button>
   </div>
   <div class="row">
-    <label class="switch" title="Show the model at its real size on this monitor"><input type="checkbox" id="actual"><span class="track"></span>Actual size</label>
+    <label class="switch" id="actualRow" title="Show the model at its real size on this monitor"><input type="checkbox" id="actual"><span class="track"></span>Actual size</label>
     <span class="lbl" id="calc"></span>
   </div>
   <div id="calib" hidden style="display:flex;flex-direction:column;gap:8px">
@@ -186,7 +186,7 @@
       </select>
       <input type="number" id="ppi" min="50" max="600" step="0.1" value="218" aria-label="Pixels per inch" hidden>
     </div>
-    <div class="row"><span class="lbl" title="How far your eyes are from the screen. The view's perspective matches it, so the model looks like it sits just behind the glass.">Eye distance</span><input type="number" id="eye" min="200" max="1500" step="10" value="600" aria-label="Eye to screen distance in mm"><span class="lbl">mm</span></div>
+    <div class="row" id="eyeRow"><span class="lbl" title="How far your eyes are from the screen. The view's perspective matches it, so the model looks like it sits just behind the glass.">Eye distance</span><input type="number" id="eye" min="200" max="1500" step="10" value="600" aria-label="Eye to screen distance in mm"><span class="lbl">mm</span></div>
     <div class="row"><span class="lbl">Fine-tune</span><input type="range" id="fine" min="-10" max="10" step="0.1" value="0" aria-label="Fine-tune scale percent"><span class="lbl" id="fineVal">0%</span></div>
   </div>
 </div>
@@ -871,8 +871,11 @@ function setMode(m){
   allGroup.visible = all; device.visible = !all; labelsEl.hidden = !all;
   document.getElementById("enclRow").hidden = !all;
   document.querySelector(".devled").hidden = all;
-  viewBtn.hidden = all; if(all) openView(false);
-  $("scalebar").hidden = all || !actual;
+  // 3D settings in All states: only the actual-size calibration (it's always at actual size, on a flat top view)
+  $("viewTitle").textContent = all ? "Actual size" : "3D view";
+  $("viewPresets").hidden = $("actualRow").hidden = $("eyeRow").hidden = all;
+  $("calib").hidden = !(all || actual); $("scalebar").hidden = !(all || actual);
+  resize();
   cam = all ? ortho : camera; controls.enabled = !all;
   if(all){ setEnclosure(); refreshTiles(true); }
   document.getElementById("resetTop").hidden = m !== "flow";
@@ -936,7 +939,10 @@ const PLAY_SVG = '<svg viewBox="0 0 24 24" width="9" height="9" fill="currentCol
 function buildTiles(){
   if(tiles.length || !window.HMI) return;
   const list = [];
-  for(const name of HMI.screens){
+  // flow order, except Off comes last in the treatment flow (after Treatment Finished, where the device turns off)
+  const order = HMI.screens.filter(n => n !== "Off");
+  order.splice(order.indexOf("Treatment Finished") + 1, 0, "Off");
+  for(const name of order){
     list.push({label: name, name});
     if(name === "Waiting for Device"){ list[list.length - 1].label = "Waiting for Device · Right"; list.push({label: "Waiting for Device · Left", name, left: true}); }
     if(name === "Start Treatment"){ list[list.length - 1].timer = true; list.push({label: "Paused", name: "Docked into Garment", paused: true}); }
@@ -981,23 +987,31 @@ function layoutTiles(){
   const wide = innerWidth > 1060;
   const r = {x0: wide ? panel.right + 16 : 16, y0: nav.bottom + 16, x1: innerWidth - 16, y1: innerHeight - 16};
   const rw = Math.max(100, r.x1 - r.x0), rh = Math.max(100, r.y1 - r.y0);
-  let best = null;
-  for(let cols = 1; cols <= n; cols++){
-    const rows = Math.ceil(n / cols), s = Math.min(rw/(cols*cell.w), rh/(rows*cell.d));
-    if(!best || s > best.s) best = {cols, rows, s};
+  // Always at actual size: 1 mm on the device is 1 mm on this monitor (the calibration in the 3D settings). As many
+  // columns as fit across; rows that don't fit below scroll (drag, or the scroll wheel).
+  orthoS = cssPxPerMm();
+  // The battery screens (hmi-screens.js's BATTERY flow) start a row of their own
+  const cols = Math.max(1, Math.min(n, Math.floor(rw / (cell.w*orthoS))));
+  const battery = new Set(typeof BATTERY !== "undefined" ? BATTERY.map(b => b.name) : []);
+  const slots = []; let c = 0, row = 0, prevBatt = false;
+  for(const t of tiles){
+    const b = battery.has(t.name);
+    if((b !== prevBatt && c > 0) || c === cols){ c = 0; row++; }
+    slots.push([c, row]); c++; prevBatt = b;
   }
+  const rows = row + 1;
   tiles.forEach((t, i) => {
-    const c = i % best.cols, row = Math.floor(i / best.cols);
-    t.group.position.set((c - (best.cols - 1)/2)*cell.w - cx, 0, (row - (best.rows - 1)/2)*cell.d - 4);   // −4: room for the label below
+    const [sc, sr] = slots[i];
+    t.group.position.set((sc - (cols - 1)/2)*cell.w - cx, 0, (sr - (rows - 1)/2)*cell.d - 4);   // −4: room for the label below
   });
-  orthoS = best.s;
   ortho.left = -innerWidth/2/orthoS; ortho.right = innerWidth/2/orthoS; ortho.top = innerHeight/2/orthoS; ortho.bottom = -innerHeight/2/orthoS;
   ortho.zoom = 1; ortho.updateProjectionMatrix();
-  // the grid's center lands on the free area's center
+  // centered across the free area; from its top down, or centered if all the rows fit
+  const gridH = rows*cell.d*orthoS, top = gridH <= rh ? r.y0 + (rh - gridH)/2 : r.y0;
   ortho.position.x = -((r.x0 + r.x1)/2 - innerWidth/2)/orthoS;
-  ortho.position.z = -((r.y0 + r.y1)/2 - innerHeight/2)/orthoS;
+  ortho.position.z = -(top + gridH/2 - innerHeight/2)/orthoS;
 }
-// Drag to pan, scroll to zoom (around the pointer)
+// Drag or scroll to pan; the zoom stays at actual size
 let pan = null;
 canvas.addEventListener("pointerdown", e => {
   if(mode !== "all") return;
@@ -1013,10 +1027,7 @@ addEventListener("pointerup", () => { pan = null; });
 canvas.addEventListener("wheel", e => {
   if(mode !== "all") return;
   e.preventDefault();
-  const k0 = orthoS * ortho.zoom, z = Math.min(8, Math.max(0.4, ortho.zoom * Math.exp(-e.deltaY * 0.0015))), k1 = orthoS * z;
-  const dx = e.clientX - innerWidth/2, dy = e.clientY - innerHeight/2;
-  ortho.position.x += dx/k0 - dx/k1; ortho.position.z += dy/k0 - dy/k1;
-  ortho.zoom = z; ortho.updateProjectionMatrix();
+  ortho.position.x += e.deltaX / orthoS; ortho.position.z += e.deltaY / orthoS;
 }, {passive: false});
 // Each frame: the timer, LEDs and labels (under the enclosure, or under the display with it off)
 let tileTick = performance.now(), tileTimerPost = 0;
@@ -1041,7 +1052,6 @@ function tickTiles(now){
     el.style.transform = `translate(${x - el.offsetWidth/2}px, ${y}px)`;
   }
 }
-addEventListener("resize", () => { if(mode === "all") layoutTiles(); });
 
 // ---- Clicking buttons: the button goes in while held; a click is a press, holding ▶ is a long press ----
 const ray = new THREE.Raycaster(), ptr = new THREE.Vector2();
@@ -1155,12 +1165,14 @@ function resize(){
   camera.fov = actual ? THREE.MathUtils.radToDeg(2*Math.atan(h/k/2/eyeMm())) : 30;   // screen height in mm, seen from the eye
   renderer.setSize(w, h, false); camera.aspect = w/h; camera.updateProjectionMatrix();
   $("scaleLine").style.width = (50*k) + "px";
-  $("calc").textContent = actual ? `${k.toFixed(2)} CSS px per mm` : "";
+  $("calc").textContent = actual || mode === "all" ? `${k.toFixed(2)} CSS px per mm` : "";
+  if(mode === "all") layoutTiles();                         // All states is always at actual size: follow the calibration
 }
 addEventListener("resize", resize); resize();
 matchMedia(`(resolution: ${devicePixelRatio}dppx)`).addEventListener("change", resize);
 $("fineVal").textContent = (+$("fine").value).toFixed(1) + "%";
 if(store("enc3d-actual") === "1") setActual(true);
+setMode("all");                                             // the page opens on All states
 
 renderer.setAnimationLoop(now => {
   if(fly){
