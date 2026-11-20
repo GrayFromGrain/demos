@@ -93,7 +93,7 @@
   <div class="row"><label class="switch" title="Show the screen text in capitals (same setting as DisplaySim's All caps)"><input type="checkbox" id="caps"><span class="track"></span>All caps</label></div>
   <div class="devled">
     <b>Left</b><div class="led"><i id="ledSwatchL"></i><span id="ledTextL">LED off</span></div>
-    <b>Right</b><div class="led"><i id="ledSwatchR"></i><span id="ledTextR">LED off</span></div>
+    <b class="rightOnly">Right</b><div class="led rightOnly"><i id="ledSwatchR"></i><span id="ledTextR">LED off</span></div>
   </div>
   <p class="err" id="err" hidden></p>
 </div>
@@ -602,6 +602,10 @@ function setMode(m){
   document.getElementById("flowCtl").hidden = m !== "flow";
   document.getElementById("browseCtl").hidden = m !== "browse";
   for(const d of devs) d.garmentEl.hidden = m !== "flow";
+  // Browse shows one device, centered; the flow demo shows the pair
+  rightGroup.visible = m === "flow"; device.position.x = m === "flow" ? -OFFX : 0;
+  document.querySelectorAll(".rightOnly").forEach(el => el.hidden = m !== "flow");
+  setView(curView);
   if(m === "flow") for(const d of devs){ setLed(d, ledFor(d.state)); refresh(d); } else browseShow(idx);
 }
 document.getElementById("modeFlow").onclick = () => setMode("flow");
@@ -635,7 +639,7 @@ const hit = e => {
   const r = canvas.getBoundingClientRect();
   ptr.set((e.clientX - r.left)/r.width*2 - 1, -(e.clientY - r.top)/r.height*2 + 1);
   ray.setFromCamera(ptr, cam);
-  const h = ray.intersectObjects(clickables, true)[0];
+  const h = ray.intersectObjects(clickables.filter(b => b.userData.dev.group.visible), true)[0];
   if(!h) return null;
   let o = h.object; while(o && !clickables.includes(o)) o = o.parent; return o;
 };
@@ -662,15 +666,22 @@ function tickHold(now){
 }
 
 // ---- Camera presets ----
+const VIEWS1 = {                                               // one device (Browse screens)
+  angled:  {pos:[70, DIM.H + 150, 230], tgt:[0, DIM.H*0.55, 0]},
+  top:     {pos:[0, DIM.H + 170, 0.01], tgt:[0, CV.top, 0]},
+  buttons: {pos:[-110, DIM.H + 60, -250], tgt:[0, DIM.H*0.5, 0]},
+  front:   {pos:[0, DIM.H/2, 300], tgt:[0, DIM.H/2, 11]},
+};
 const VIEWS = {
   angled:  {pos:[90, DIM.H + 210, 330], tgt:[0, DIM.H*0.55, 0]},     // framed for both devices side by side
   top:     {pos:[0, DIM.H + 260, 0.01], tgt:[0, CV.top, 0]},
   buttons: {pos:[-150, DIM.H + 90, -360], tgt:[0, DIM.H*0.5, 0]},
   front:   {pos:[0, DIM.H/2, 430], tgt:[0, DIM.H/2, 11]},      // target on the front face, so it measures true
 };
-let fly = null;
+let fly = null, curView = "angled";
 function setView(name, instant){
-  const v = VIEWS[name], to = {pos:new THREE.Vector3(...v.pos), tgt:new THREE.Vector3(...v.tgt)};
+  curView = name;
+  const v = (mode === "browse" ? VIEWS1 : VIEWS)[name], to = {pos:new THREE.Vector3(...v.pos), tgt:new THREE.Vector3(...v.tgt)};
   if(actual) to.pos.sub(to.tgt).setLength(eyeMm()).add(to.tgt);   // actual size: the camera sits at your eye distance
   if(instant){ cam.position.copy(to.pos); controls.target.copy(to.tgt); controls.update(); return; }
   fly = {from:{pos:cam.position.clone(), tgt:controls.target.clone()}, to, t0:performance.now()};
