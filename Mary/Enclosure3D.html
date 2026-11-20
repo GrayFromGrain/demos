@@ -137,6 +137,9 @@
         </select>
       </div>
     </div>
+    <div class="row" title="How much of the display's light the translucent top cover absorbs (0% clear, 100% opaque)">
+      <span class="lbl">Cover tint</span><input type="range" id="tint" min="0" max="100" step="5" aria-label="Cover tint percent"><span class="lbl" id="tintVal"></span>
+    </div>
     <div class="devled">
       <b>Left</b><div class="led"><i id="ledSwatchL"></i><span id="ledTextL">LED off</span></div>
       <b class="rightOnly">Right</b><div class="led rightOnly"><i id="ledSwatchR"></i><span id="ledTextR">LED off</span></div>
@@ -215,8 +218,13 @@ const DIM = {
   bow: 2.25,                                   // the body arcs this far toward the button side over its length
   waist: 0.65,                                 // and is this much narrower per side in the middle
   bodyBevel: 2.5, topBevel: 0.8,               // rounding at the bottom and top edges of the housing
-  cover: {inset: 0.75, top: 99.48, thk: 5.4, bevel: 0.45,    // display cover: inset from the housing, top height, thickness, edge/window bevel
-    windowPad: 0.25},                          // window = the active area plus this black margin on each side (at its narrowest)
+  // top cover, two layers. Outer: a thin hollow shell of translucent black plastic over everything, display included
+  // (top height, top wall and side wall thickness, how far its sides come down, edge rounding, and its tint: the share
+  // of the display's light it absorbs, 0 = clear, 1 = opaque; the Cover tint slider in Specs changes it live).
+  // Inner: thicker, nearly opaque plastic lining it, with a window over the display's active area (plus windowPad
+  // each side), a light-pipe hole over the LED and the play button opening.
+  cover: {top: 99.48, wall: 0.3, side: 0.4, skirt: 5, bevel: 0.12, tint: 0.2,
+    inner: {wall: 0.3, side: 0.6, tint: 0.92, windowPad: 0}},
   // active area center (3.1 mm from the play button, as in the top-view render; its bottom edge 0.5 mm above the
   // play button's), panel glass center (0.73 mm toward the button side: the wider glass and the flex tail are on
   // that side, as on the prototype board), panel top height (CAD)
@@ -308,8 +316,9 @@ const slab = ({w, d, r, h, y0, bevel = 0, segs = 4, holes = []}) =>
   extrude(addHoles(roundRect(new THREE.Shape(), 0, 0, w - 2*bevel, d - 2*bevel, Math.max(0.01, r - bevel)), holes), h, y0, bevel, segs);
 // A solid with the housing outline (inset by `inset`, bevel included)
 // (its outline is a polygon, so normals are smoothed across the shallow corners and kept sharp at real edges)
-const solid = ({inset = 0, h, y0, bevel = 0, segs = 4, holes = []}) =>
-  toCreasedNormals(extrude(addHoles(new THREE.Shape(outline(inset + bevel)), holes), h, y0, bevel, segs), Math.PI/5);
+// crease: faces meeting at a sharper angle than this keep their own normals (a flat top must stay flat)
+const solid = ({inset = 0, h, y0, bevel = 0, segs = 4, holes = [], crease = Math.PI/5}) =>
+  toCreasedNormals(extrude(addHoles(new THREE.Shape(outline(inset + bevel)), holes), h, y0, bevel, segs), crease);
 
 const plastic = new THREE.MeshStandardMaterial({color:"#4b4c50", roughness:0.62, metalness:0});
 const plasticBack = plastic.clone(); plasticBack.side = THREE.BackSide;   // faces seen from below
@@ -321,7 +330,8 @@ const device = new THREE.Group(); scene.add(device); device.add(shadowMesh);
 function housing(){
   const Rb = DIM.bodyBevel, Rt = DIM.topBevel, prof = [], K = 8;
   for(let k = 0; k <= K; k++){ const a = k/K*Math.PI/2; prof.push([Rb*(1 - Math.cos(a)), Rb*(1 - Math.sin(a))]); }
-  for(let k = K; k >= 0; k--){ const a = k/K*Math.PI/2; prof.push([DIM.H - Rt*(1 - Math.cos(a)), Rt*(1 - Math.sin(a))]); }
+  const top = DIM.cover.top - DIM.cover.skirt;               // the housing stops where the cover's sides come down to
+  for(let k = K; k >= 0; k--){ const a = k/K*Math.PI/2; prof.push([top - Rt*(1 - Math.cos(a)), Rt*(1 - Math.sin(a))]); }
   const rings = prof.map(([y, inset]) => ({y, pts: outline(inset, 96)})), M = rings[0].pts.length;
   const pos = [], idx = [];
   for(const r of rings) for(const p of r.pts) pos.push(p.x, r.y, -p.y);
@@ -340,12 +350,62 @@ function housing(){
 }
 device.add(housing());
 
-// Display cover (C-0507), set into the top of the housing, with the window and the play button opening. Its bevel
-// rounds the window's edge: the opening is widest at the top surface and narrowest (active area + pad) one bevel down.
-const CV = DIM.cover, cb = CV.bevel, P = DIM.play;
-const wp = DIM.cover.windowPad, win = {x:DIM.display.x, z:DIM.display.z, w:AA.w + 2*wp + 2*cb, d:AA.h + 2*wp + 2*cb, r:0.3 + cb};
+// Top cover, two layers (see DIM.cover). The thin translucent outer shell goes over everything; the nearly opaque inner
+// layer lines it, with a window over the display. So the display shows through the outer layer alone, dimmed by its
+// tint, and everywhere else the two together read as solid black plastic. Only the play button comes through.
+const CV = DIM.cover, CI = CV.inner, cb = CV.bevel, P = DIM.play;
 const playHole = {x:P.x, z:P.z, w:P.w + 2*P.gap + 2*cb, d:P.d + 2*P.gap + 2*cb, r:(P.w + 2*P.gap)/2 + cb};
-device.add(new THREE.Mesh(solid({inset:CV.inset, h:CV.thk, y0:CV.top - CV.thk, bevel:cb, segs:3, holes:[win, playHole]}), plastic));
+// Outer: glossy black; its opacity is the tint, so what's under it comes through at (1 − tint).
+// Front faces only: seen from outside, the top wall is one layer of tint, not two.
+// It reflects a soft studio gradient instead of the room environment: the room's boxes and light panels mirror as
+// hard-edged, faceted shapes on a flat glossy surface.
+const studioEnv = (() => {
+  const c = document.createElement("canvas"); c.width = 512; c.height = 256; const x = c.getContext("2d");
+  const g = x.createLinearGradient(0, 0, 0, 256);           // equirectangular: top of the canvas = straight up
+  g.addColorStop(0, "#ffffff"); g.addColorStop(0.35, "#b9b9b6"); g.addColorStop(0.5, "#6e6e6c"); g.addColorStop(1, "#1e1e1f");
+  x.fillStyle = g; x.fillRect(0, 0, 512, 256);
+  const r = x.createRadialGradient(128, 70, 0, 128, 70, 110);   // one broad soft box, up and in front
+  r.addColorStop(0, "rgba(255,255,255,0.9)"); r.addColorStop(1, "rgba(255,255,255,0)");
+  x.fillStyle = r; x.fillRect(0, 0, 512, 256);
+  const t = new THREE.CanvasTexture(c); t.mapping = THREE.EquirectangularReflectionMapping; t.colorSpace = THREE.SRGBColorSpace;
+  return new THREE.PMREMGenerator(renderer).fromEquirectangular(t).texture;
+})();
+const coverMat = new THREE.MeshPhysicalMaterial({color:"#0b0b0d", roughness:0.32, metalness:0, clearcoat:0.35, clearcoatRoughness:0.3,
+  envMap:studioEnv, transparent:true, opacity:CV.tint, depthWrite:false});
+const innerMat = new THREE.MeshStandardMaterial({color:"#060607", roughness:0.7, transparent:true, opacity:CI.tint, depthWrite:false});
+const innerTop = CV.top - CV.wall;                          // the inner layer sits right under the outer top wall
+{
+  const ringMesh = (out, inn, h, y0, mat) => {               // a wall following the housing outline, between two insets
+    const sh = new THREE.Shape(outline(out, 96)); sh.holes.push(new THREE.Path(outline(inn, 96)));
+    return new THREE.Mesh(toCreasedNormals(extrude(sh, h, y0, 0, 1), Math.PI/5), mat);
+  };
+  // A tight crease angle: on this glossy surface, rim normals smoothed into the bevel would streak across the long,
+  // thin triangles of the flat top. The outline's own small steps (2–4°) still shade smooth.
+  const outerTop = new THREE.Mesh(solid({h:CV.wall, y0:innerTop, bevel:cb, segs:4, holes:[playHole], crease:Math.PI/15}), coverMat);
+  const outerSides = ringMesh(0, CV.side, CV.skirt - CV.wall, CV.top - CV.skirt, coverMat);
+  const win = {x:DIM.display.x, z:DIM.display.z, w:AA.w + 2*CI.windowPad, d:AA.h + 2*CI.windowPad, r:0.3};
+  const ledHole = {x:DIM.led.x, z:DIM.led.z, w:DIM.led.size + 0.2, d:DIM.led.size + 0.2, r:0.2};
+  const playHoleIn = {x:P.x, z:P.z, w:P.w + 2*P.gap, d:P.d + 2*P.gap, r:(P.w + 2*P.gap)/2};
+  const innerTopWall = new THREE.Mesh(solid({inset:CV.side, h:CI.wall, y0:innerTop - CI.wall, holes:[win, ledHole, playHoleIn]}), innerMat);
+  const innerSides = ringMesh(CV.side, CV.side + CI.side, CV.skirt - CV.wall - CI.wall, CV.top - CV.skirt, innerMat);
+  outerTop.name = outerSides.name = innerTopWall.name = innerSides.name = "cover";
+  innerTopWall.renderOrder = innerSides.renderOrder = 2;   // drawn after the display and LED under them,
+  outerTop.renderOrder = outerSides.renderOrder = 3;       // then the outer layer over everything
+  // what's inside the shell (the board and frame, not modeled): dark, from the housing up to just under the display glass
+  const coreTop = DIM.display.top - 0.5, coreBot = CV.top - CV.skirt - 0.5;
+  const inside = new THREE.Mesh(solid({inset:CV.side + CI.side + 0.05, h:coreTop - coreBot, y0:coreBot}), core); inside.name = "inside";
+  device.add(outerTop, outerSides, innerTopWall, innerSides, inside);
+}
+// Cover tint (the outer layer): DIM.cover.tint, or the Specs slider (remembered in this browser)
+function setTint(pct){
+  coverMat.opacity = Math.min(1, Math.max(0, pct/100));
+  const el = document.getElementById("tint"); el.value = pct; document.getElementById("tintVal").textContent = Math.round(pct) + "%";
+}
+{
+  let v = null; try{ v = localStorage.getItem("enc3d-tint"); }catch(e){}
+  setTint(v !== null && isFinite(+v) ? +v : CV.tint*100);
+  document.getElementById("tint").oninput = e => { setTint(+e.target.value); try{ localStorage.setItem("enc3d-tint", e.target.value); }catch(err){} };
+}
 
 // ---- Display panel: glass, polarizer, black mask, then the 128×40 active area as a live texture ----
 const panelY = DIM.display.top;
@@ -354,8 +414,8 @@ const layer = (w, h, color, y, z = DIM.display.z) => {
   m.rotation.x = -Math.PI/2; m.position.set(DIM.display.x, y, z); m.name = "panel"; device.add(m); return m;
 };
 // spaced 0.1 mm apart (all hidden under the cover but the active area) so the depth buffer can tell them apart
-layer(GLASS.w, GLASS.h, "#1d1d20", panelY - 0.3, DIM.display.glassZ);
-layer(POL.w, POL.h, "#26262a", panelY - 0.2);
+layer(GLASS.w, GLASS.h, "#111113", panelY - 0.3, DIM.display.glassZ);   // near-black: seen faintly through the tinted cover
+layer(POL.w, POL.h, "#141417", panelY - 0.2);
 layer(VA.w, VA.h, "#050506", panelY - 0.1);
 
 const TEX_K = 40;                                           // texture px per mm
@@ -462,17 +522,18 @@ sideButton("level", B.level,[0.6, 0.6, bw, bw], (x, cx, cy) => {
   [-0.7, 0, 0.7].forEach(dx => { x.beginPath(); x.moveTo(cx + dx, cy + 0.8); x.lineTo(cx + dx, cy - 0.8); x.stroke(); });   // three even bars
 });
 
-// ---- LED (light pipe flush with the cover) ----
+// ---- LED (under the cover, shining through it) ----
 const ledMat = new THREE.MeshBasicMaterial({color:"#2a2a2d", toneMapped:false});
 {
   const s = DIM.led.size, led = new THREE.Mesh(new THREE.PlaneGeometry(s, s), ledMat);
-  led.rotation.x = -Math.PI/2; led.position.set(DIM.led.x, CV.top + 0.01, DIM.led.z); led.name = "led"; device.add(led);
+  led.rotation.x = -Math.PI/2; led.position.set(DIM.led.x, innerTop - CI.wall - 0.05, DIM.led.z); led.name = "led"; device.add(led);
 }
 // glow halo
 const haloTex = (() => { const c = document.createElement("canvas"); c.width = c.height = 128; const x = c.getContext("2d");
   const g = x.createRadialGradient(64,64,0,64,64,64); g.addColorStop(0,"rgba(255,255,255,0.9)"); g.addColorStop(0.25,"rgba(255,255,255,0.35)"); g.addColorStop(1,"rgba(255,255,255,0)");
   x.fillStyle = g; x.fillRect(0,0,128,128); return new THREE.CanvasTexture(c); })();
-const halo = new THREE.Mesh(new THREE.PlaneGeometry(7, 7), new THREE.MeshBasicMaterial({map:haloTex, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, toneMapped:false}));
+const LED_GAIN = 2.2, HALO_GAIN = 1.6;                     // LED brightness: the light pipe, and its glow around it
+const halo = new THREE.Mesh(new THREE.PlaneGeometry(9, 9), new THREE.MeshBasicMaterial({map:haloTex, transparent:true, depthWrite:false, blending:THREE.AdditiveBlending, toneMapped:false}));
 halo.rotation.x = -Math.PI/2; halo.position.set(DIM.led.x, CV.top + 0.05, DIM.led.z); halo.name = "halo"; device.add(halo);
 
 // LED behavior per screen, from hmi-screens.js: off, steady, blink (ms on / ms off) or a color fade loop.
@@ -969,7 +1030,7 @@ function tickTiles(now){
       if(now - tileTimerPost > 66){ tileTimerPost = now; showOn(t, t.name, tileSwap(t)); }
     }
     const c = ledColorAt(t, now);
-    if(c){ t.ledMat.color.copy(c).multiplyScalar(1.2); t.haloMat.color.copy(c); t.halo.visible = true; }
+    if(c){ t.ledMat.color.copy(c).multiplyScalar(LED_GAIN); t.haloMat.color.copy(c).multiplyScalar(HALO_GAIN * (enclBox.checked ? 1 - coverMat.opacity : 1)); t.halo.visible = true; }
     else { t.ledMat.color.set("#2a2a2d"); t.halo.visible = false; }
   }
   const on = enclBox.checked;
@@ -1121,7 +1182,7 @@ renderer.setAnimationLoop(now => {
   for(const d of devs){
     const c = ledColorAt(d, now);
     document.getElementById("ledSwatch" + d.side).style.background = c ? "#" + c.getHexString() : "#2a2a2d";
-    if(c){ d.ledMat.color.copy(c).multiplyScalar(1.2); d.haloMat.color.copy(c); d.halo.visible = true; }
+    if(c){ d.ledMat.color.copy(c).multiplyScalar(LED_GAIN); d.haloMat.color.copy(c).multiplyScalar(HALO_GAIN * (1 - coverMat.opacity)); d.halo.visible = true; }   // glow through the tint
     else { d.ledMat.color.set("#2a2a2d"); d.halo.visible = false; }
   }
   placeGarment();
