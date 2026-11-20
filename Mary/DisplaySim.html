@@ -1005,7 +1005,9 @@ function showState(st){
   const families = compareActive() ? cols.map(colFont) : [currentFont()];
   const weights = $("hweight").value === "design" ? [600, 500] : [+$("hweight").value];   // the faces this screen draws with
   const fonts = [...families.flatMap(f => weights.map(w => `${w} 20px ${f.css}`)), `600 20px "${DESIGN_FAMILY}"`, `500 20px "${DESIGN_FAMILY}"`];
-  const ready = [...families.map(ensureFont), new Promise(r => { im.onload = im.onerror = r; im.src = st.img; })];
+  // The original artwork is only drawn with Original artwork on (or in All screens); otherwise don't wait for it to decode
+  const needIm = showOriginal(st) || allActive();
+  const ready = [...families.map(ensureFont), new Promise(r => { im.onload = im.onerror = r; im.src = st.img; if(!needIm) r(); })];
   Promise.all(ready).then(() => Promise.all(fonts.map(f => document.fonts.load(f).catch(()=>{})))).then(start, start);
   setPressed(st.name);
 }

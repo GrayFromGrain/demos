@@ -90,7 +90,8 @@
     <select id="screen" aria-label="HMI screen"></select>
     <button class="btn" id="next" aria-label="Next screen">›</button>
   </div>
-  <div class="row"><label class="switch" title="Show the screen text in capitals (same setting as DisplaySim's All caps)"><input type="checkbox" id="caps"><span class="track"></span>All caps</label></div>
+  <div class="row"><label class="switch" title="Show the screen text in capitals (same setting as DisplaySim's All caps)"><input type="checkbox" id="caps"><span class="track"></span>All caps</label>
+    <label class="switch" title="Play each screen's sound as it appears (same sounds and setting as HMI-Flow)"><input type="checkbox" id="sound" checked><span class="track"></span>Sound</label></div>
   <div class="devled">
     <b>Left</b><div class="led"><i id="ledSwatchL"></i><span id="ledTextL">LED off</span></div>
     <b class="rightOnly">Right</b><div class="led rightOnly"><i id="ledSwatchR"></i><span id="ledTextR">LED off</span></div>
@@ -470,6 +471,74 @@ const devs = [instrument(device, "L"), instrument(rightGroup, "R")];
 const clickables = devs.flatMap(d => d.clickables);
 const other = d => devs.find(o => o !== d);
 
+// ---- Sounds: the same sounds, versions and buzzer model as HMI-Flow.html (keep in sync). The version picked there
+// is remembered per browser, and is used here too when both pages are served from the same place. ----
+const NOTE = {C6:1046.5, C7:2093.0, D7:2349.3, E7:2637.0, G7:3136.0};
+// note: [freq, start_ms, dur_ms, envelope, gain(0-1)]
+const SOUNDS = {
+  on:   { level:0.5, versions:[
+    { notes:[[NOTE.C7,0,140,"pluck",1],[NOTE.G7,180,620,"bell",1]] },
+    { notes:[[NOTE.C6,0,120,"pluck",1],[NOTE.C7,150,550,"bell",1]] } ] },
+  dock: { level:0.5, versions:[
+    { notes:[[NOTE.E7,0,160,"pluck",0.45],[NOTE.C7,260,260,"bell",1]] },
+    { notes:[[NOTE.E7,0,22,"pluck",0.45],[NOTE.C7,60,140,"pluck",1]] } ] },
+  start:{ level:0.5, versions:[
+    { notes:[[NOTE.D7,0,260,"pluck",1],[NOTE.G7,360,520,"bell",1]] },
+    { notes:[[NOTE.D7,0,100,"pluck",1],[NOTE.G7,140,600,"bell",1]] } ] },
+  done: { level:0.71, versions:[
+    { notes:[[NOTE.D7,0,140,"pluck",1],[NOTE.C7,160,140,"pluck",1],[NOTE.E7,300,880,"bell",1],[NOTE.G7,300,700,"bell",0.18]] } ] },
+  low:  { level:0.71, versions:[
+    { notes:[[NOTE.G7,0,260,"pluck",1],[NOTE.D7,360,520,"bell",1]] },
+    { notes:[[NOTE.G7,0,200,"pluck",1],[NOTE.D7,280,300,"bell",1],[NOTE.G7,800,200,"pluck",1],[NOTE.D7,1080,300,"bell",1]] } ] },
+  plug: { level:0.5, versions:[
+    { notes:[[NOTE.D7,0,125,"pluck",1],[NOTE.G7,200,200,"bell",1]] } ] },
+};
+// Which sound each screen plays as it appears (HMI-Flow.html's `sound` per state)
+const SCREEN_SOUND = {"Turn On":"on", "Waiting for Device":"dock", "Docked into Garment":"dock", "Start Treatment":"start",
+  "Custom Treatment":"start", "Treatment Finished":"done", "Battery Low":"low", "Charger Connected":"plug"};
+const pickVersion = id => { let p = {}; try{ p = JSON.parse(localStorage.getItem("hmi-flow-versions") || "{}") || {}; }catch(e){}
+  const v = p[id]; return Number.isInteger(v) && v < SOUNDS[id].versions.length ? v : 0; };
+const soundBox = document.getElementById("sound");
+try{ soundBox.checked = localStorage.getItem("hmi-flow-sound") !== "off"; }catch(e){}
+soundBox.onchange = () => { try{ localStorage.setItem("hmi-flow-sound", soundBox.checked ? "on" : "off"); }catch(e){} };
+// The audio context is made (and resumed) on the first click or key, before that click's own handler runs,
+// so even the first sound starts with the press. Sounds are scheduled at the current audio time, not ahead of it.
+let actx = null, ringing = null, lastSound = {id:null, t:-1e9};
+function audio(){
+  if(!actx){ try{ actx = new (window.AudioContext || window.webkitAudioContext)({latencyHint:"interactive"}); }catch(e){ return null; } }
+  if(actx.state === "suspended") actx.resume();
+  return actx;
+}
+for(const ev of ["pointerdown", "keydown"]) addEventListener(ev, audio, {capture:true});
+function playSound(id){
+  const s = SOUNDS[id]; if(!s || !soundBox.checked) return;
+  const now = performance.now();
+  if(lastSound.id === id && now - lastSound.t < 80) return;   // the pair changes together: one sound, not two
+  lastSound = {id, t:now};
+  const c = audio(); if(!c) return;
+  if(ringing) ringing.gain.setTargetAtTime(0, c.currentTime, 0.01);   // cut off a sound still ringing
+  const master = c.createGain(); master.gain.value = 0.6 * 0.35; ringing = master;   // HMI-Flow's volume 60%
+  const hp = c.createBiquadFilter(); hp.type = "highpass"; hp.frequency.value = 750; hp.Q.value = 0.9;        // speaker sim
+  const pk = c.createBiquadFilter(); pk.type = "peaking"; pk.frequency.value = 2700; pk.Q.value = 1.4; pk.gain.value = 6;
+  const lp = c.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 6500; lp.Q.value = 0.7;
+  master.connect(hp); hp.connect(pk); pk.connect(lp); lp.connect(c.destination);
+  // one frequency at a time: chords keep their loudest note, overlapping notes are cut short
+  const byStart = new Map();
+  for(const n of s.versions[pickVersion(id)].notes){ const cur = byStart.get(n[1]); if(!cur || n[4] > cur[4]) byStart.set(n[1], n); }
+  const seq = [...byStart.values()].sort((a, b) => a[1] - b[1]).map(n => n.slice());
+  for(let i = 0; i < seq.length - 1; i++) if(seq[i][1] + seq[i][2] > seq[i + 1][1]) seq[i][2] = seq[i + 1][1] - seq[i][1];
+  const t0 = c.currentTime;
+  for(const [f, st, d, env, g] of seq){
+    const t = t0 + st/1000, dur = d/1000;
+    const o = c.createOscillator(); o.type = "square"; o.frequency.setValueAtTime(f, t);
+    const a = c.createGain(), peak = g * s.level * 0.45;
+    a.gain.setValueAtTime(0.0001, t);
+    a.gain.exponentialRampToValueAtTime(peak, t + (env === "pluck" ? 0.004 : 0.02));
+    a.gain.exponentialRampToValueAtTime(0.0001, t + dur);
+    o.connect(a); a.connect(master); o.start(t); o.stop(t + dur + 0.02);
+  }
+}
+
 // ---- Screens, drawn by the embedded DisplaySims (one per device) ----
 // swap: [[regex, text], …] replaces part of the screen's text (live timer, Dock Left, Paused)
 function showOn(d, name, swap = []){
@@ -488,6 +557,7 @@ function browseShow(i){
   if(!screens.length) return;
   idx = (i + screens.length) % screens.length;
   const name = screens[idx]; sel.value = name;
+  playSound(SCREEN_SOUND[name]);
   const base = name === "Custom Treatment" ? "Start Treatment" : name;   // live-only screen: LED of the screen it derives from
   for(const d of devs){ showOn(d, name); setLed(d, ledInfo[base] || {off:true}); }
 }
@@ -538,6 +608,7 @@ function refresh(d){
 }
 const ledFor = s => s === "PAUSED" ? {...(ledInfo["Docked into Garment"] || {off:true}), blink: 450} : (ledInfo[SCREEN[s]] || {off:true});
 function setState(d, s){
+  if(s !== d.state && s !== "PAUSED") playSound(SCREEN_SOUND[SCREEN[s]]);   // first, so it starts with the press
   d.state = s; d.t0 = performance.now();
   setLed(d, ledFor(s)); refresh(d); syncGarment(d);
 }
@@ -648,7 +719,11 @@ canvas.addEventListener("pointerdown", e => {
   const b = hit(e); if(!b) return;
   hold = {b, t0: performance.now(), fired: false}; b.userData.held = true; b.userData.t = -1;
   controls.enabled = false;                              // holding a button doesn't orbit
-  canvas.setPointerCapture(e.pointerId);
+  try{ canvas.setPointerCapture(e.pointerId); }catch(err){}
+  // A press acts as the button goes down, so sound and screen answer right away. The one exception is ▶ while
+  // waiting for the other device, where only a long press does something (see tickHold).
+  const {dev, key} = b.userData;
+  if(!(mode === "flow" && key === "play" && dev.state === "WAIT")){ hold.fired = true; press(dev, key); }
 });
 const release = () => {
   if(!hold) return;
